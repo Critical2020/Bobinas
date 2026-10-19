@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bobinas Express | React Standalone Preview</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#fff7ed', 100: '#ffedd5', 200: '#fed7aa', 300: '#fdba74',
+              400: '#fb923c', 500: '#f97316', 600: '#ea580c', 700: '#c2410c',
+              800: '#9a3412', 900: '#7c2d12', 950: '#431407'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Font Awesome Icons 6.4.0 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+
+  <!-- React 18 & Babel Standalone (Para ejecutar directamente con doble clic) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.05); }
+    ::-webkit-scrollbar-thumb { background: rgba(150, 150, 150, 0.3); border-radius: 4px; }
+    .chat-bubble-tail-in::before { content: ""; position: absolute; top: 0; left: -8px; width: 0; height: 0; border: 8px solid transparent; border-top-color: #ffffff; border-right: 0; }
+    .dark .chat-bubble-tail-in::before { border-top-color: #202c33; }
+    .chat-bubble-tail-out::after { content: ""; position: absolute; top: 0; right: -8px; width: 0; height: 0; border: 8px solid transparent; border-top-color: #d9fdd3; border-left: 0; }
+    .dark .chat-bubble-tail-out::after { border-top-color: #005c4b; }
+    @keyframes pulse-dot { 0%, 80%, 100% { transform: scale(0); opacity: 0.4; } 40% { transform: scale(1); opacity: 1; } }
+    .pulsing-dot { animation: pulse-dot 1.4s infinite ease-in-out; }
+    .pulsing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .pulsing-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fade-in { animation: fadeIn 0.2s ease-out forwards; }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-brand-500 selection:text-white">
+  <div id="root">
+    <div style="padding: 40px; text-align: center; color: #94a3b8; font-family: sans-serif;">
+      <i class="fa-solid fa-spinner fa-spin text-3xl mb-3 text-orange-500"></i>
+      <p>Cargando aplicación React de Bobinas Express...</p>
+    </div>
+  </div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useContext, createContext, useMemo, useCallback, useRef } = React;
+
+    // --- SEED DATA ---
+    const DEFAULT_BOBINAS_SEED = [
+      { id: 'BOB-CAP32', name: 'Bobina de Encendido Chevrolet Captiva 3.2 V6 Alloytec', brand: 'Chevrolet', carModel: 'Captiva Sport 3.2L V6 (2008 - 2015)', engine: '3.2L V6 24V High Feature', oem: '12618542 / 12590990 / UF569', type: 'Tipo Lápiz Individual (COP)', connector: 'Conector 4 Pines', price: 32.00, oldPrice: 39.50, stock: 18, inStock: true, warranty: '12 meses', badge: 'Más Vendida' },
+      { id: 'BOB-CORSA1416', name: 'Bobina de Encendido Chevrolet Corsa 1.4 / 1.6 / Chevy', brand: 'Chevrolet', carModel: 'Corsa, Chevy C2, Montana, Meriva (1998 - 2012)', engine: '1.4L / 1.6L 8V MPFI', oem: '10450424 / 93230798', type: 'Paquete Múltiple 4 Torres', connector: 'Conector 4 Pines Plano', price: 34.00, oldPrice: 42.00, stock: 22, inStock: true, warranty: '12 meses', badge: 'Original Delphi Spec' },
+      { id: 'BOB-AVEO16', name: 'Bobina de Encendido Chevrolet Aveo 1.6 16V / Optra Design', brand: 'Chevrolet', carModel: 'Aveo, Kalos, Spark GT, Optra Design (2005 - 2016)', engine: '1.6L 16V E-TEC II', oem: '96253555 / 96566258', type: 'Módulo 4 Salidas', connector: 'Conector 3 Pines Ovalado', price: 29.50, oldPrice: 36.00, stock: 25, inStock: true, warranty: '12 meses', badge: 'Oferta' },
+      { id: 'BOB-VITARA20', name: 'Bobina Suzuki Grand Vitara 2.0L J20A / XL7 2.7 V6', brand: 'Suzuki', carModel: 'Grand Vitara, Aerio, Tracker, XL7 (1999 - 2009)', engine: '2.0L J20A 4 Cil / 2.7L H27A V6', oem: '33410-77E20 / 33400-65G00', type: 'Tipo Lápiz Individual Denso Spec', connector: 'Conector 3 Pines', price: 28.00, oldPrice: 34.00, stock: 14, inStock: true, warranty: '12 meses', badge: 'Japonesa OEM' },
+      { id: 'BOB-COROLLA18', name: 'Bobina Toyota Corolla 1.8 VVT-i (2003 - 2014)', brand: 'Toyota', carModel: 'Corolla New Sensation, Matrix, Yaris, Celica', engine: '1.8L 1ZZ-FE / 2ZR-FE VVT-i', oem: '90919-02239 / 90919-02258', type: 'Tipo Lápiz Individual Denso', connector: 'Conector 4 Pines', price: 27.50, oldPrice: 33.00, stock: 30, inStock: true, warranty: '18 meses', badge: 'Alta Durabilidad' },
+      { id: 'BOB-FIESTA16', name: 'Bobina Ford Fiesta Power / Max / Move / EcoSport 1.6', brand: 'Ford', carModel: 'Fiesta, Ka, EcoSport, Focus (2001 - 2013)', engine: '1.6L Zetec Rocam 8V', oem: '988F-12029-AC / XS6F-12029-AA', type: 'Paquete Cuadrado 4 Torres', connector: 'Conector 3 Pines Motorcraft Spec', price: 31.00, oldPrice: 38.00, stock: 16, inStock: true, warranty: '12 meses', badge: 'Heavy Duty' },
+      { id: 'BOB-CLIO16V', name: 'Bobina Tipo Lápiz Renault Clio / Mégane / Logan / Kangoo 16V', brand: 'Renault', carModel: 'Clio II, Symbol, Logan, Sandero, Duster, Mégane II', engine: '1.4L K4J / 1.6L K4M / 2.0L F4R 16V', oem: '7700875000 / 8200154186A', type: 'Tipo Lápiz Individual Beru Spec', connector: 'Conector 2 Pines', price: 18.50, oldPrice: 23.00, stock: 40, inStock: true, warranty: '12 meses', badge: 'Oferta' },
+      { id: 'BOB-ELANTRA', name: 'Bobina Hyundai Tucson / Elantra / Kia Sportage 2.0', brand: 'Hyundai', carModel: 'Tucson, Elantra, Sportage, Cerato (2005 - 2012)', engine: '2.0L Beta II / 1.8L', oem: '27301-23700 / 27301-23900', type: 'Bobina Pack Doble con Soporte', connector: 'Conector 3 Pines', price: 31.00, oldPrice: 38.00, stock: 8, inStock: true, warranty: '12 meses', badge: 'Pocas Unidades' },
+      { id: 'BOB-CRUZE18', name: 'Riel de Bobinas Chevrolet Cruze 1.8 / Sonic 1.6 Ecotec', brand: 'Chevrolet', carModel: 'Cruze, Sonic, Tracker, Orlando (2010 - 2018)', engine: '1.6L / 1.8L Ecotec 16V', oem: '55570160 / 25195107 / 96476983', type: 'Riel Completo 4 Cilindros', connector: 'Conector 7 Pines Lateral', price: 58.00, oldPrice: 75.00, stock: 6, inStock: true, warranty: '12 meses', badge: 'Premium' },
+      { id: 'BOB-SENTRA', name: 'Bobina Nissan Tiida / Sentra B16 / Versa 1.8 MR18DE', brand: 'Nissan', carModel: 'Tiida, Sentra 2.0 B16, Versa, Cube (2007 - 2016)', engine: '1.8L MR18DE / 2.0L MR20DE', oem: '22448-ED000 / AIC-2408G / 22448-JA00C', type: 'Tipo Lápiz Hanshin Spec', connector: 'Conector 3 Pines', price: 25.00, oldPrice: 32.00, stock: 15, inStock: true, warranty: '12 meses', badge: 'Calidad OEM' },
+      { id: 'BOB-DFSK16', name: 'Bobina de Encendido Dong Feng / DFSK 1.6', brand: 'DFSK', carModel: 'CS35, CS55, Alsvin, Glory 560', engine: '1.6L Bluetec / DOHC', oem: '444-2112 / DF-16029', type: 'Tipo Lápiz Individual', connector: 'Conector 3 Pines', price: 30.00, oldPrice: 38.00, stock: 2, inStock: true, warranty: '2 meses', badge: 'OEM DFSK' }
+    ];
+
+    const INITIAL_SALES_SEED = [
+      { orderId: 'ORD-8901', timestamp: 'Hoy, 09:15 AM', userId: 'CLI-INITIAL', customerName: 'Taller Electromecánica Zulia', customerPhone: '0414-6112233', coilId: 'BOB-CORSA1416', coilName: 'Bobina de Encendido Chevrolet Corsa 1.4 / 1.6 / Chevy', oem: '10450424', qty: 1, unitPrice: 34.00, totalPrice: 34.00, stockBefore: 23, stockAfter: 22, paymentRef: 'Pago Móvil Ref #550129', status: 'CONFIRMED' }
+    ];
+
+    const OFFICIAL_WA_RAW = '04126497478';
+
+    // --- UTILITIES ---
+    function formatUSD(amt) { return `$${Number(amt || 0).toFixed(2)}`; }
+
+    function normalizeCoilRecord(raw) {
+      const priceVal = parseFloat(raw.price);
+      const safePrice = !isNaN(priceVal) && priceVal >= 0 ? priceVal : 25.00;
+      const rawOldPrice = parseFloat(raw.oldPrice || raw.old_price);
+      const safeOldPrice = !isNaN(rawOldPrice) && rawOldPrice > 0 ? rawOldPrice : Number((safePrice * 1.2).toFixed(2));
+      const stockVal = parseInt(raw.stock, 10);
+      const safeStock = !isNaN(stockVal) && stockVal >= 0 ? stockVal : 0;
+      const idVal = String(raw.id || '').trim();
+      return {
+        id: idVal || `BOB-${Math.floor(100 + Math.random() * 900)}`,
+        name: String(raw.name || 'Bobina de Encendido Automotriz').trim(),
+        brand: String(raw.brand || 'Chevrolet').trim(),
+        carModel: String(raw.carModel || raw.car_model || 'Multimodelo').trim(),
+        engine: String(raw.engine || '1.6L / 2.0L').trim(),
+        oem: String(raw.oem || 'OEM-STD').trim(),
+        type: String(raw.type || 'Tipo Lápiz Individual').trim(),
+        connector: String(raw.connector || 'Conector 4 Pines').trim(),
+        price: safePrice,
+        oldPrice: safeOldPrice,
+        stock: safeStock,
+        inStock: safeStock > 0,
+        warranty: String(raw.warranty || '12 meses').trim(),
+        badge: String(raw.badge || 'OEM Spec').trim()
+      };
+    }
+
+    function getEngineLabel(engine) {
+      const map = { supabase: 'Supabase (PostgreSQL)', mongodb: 'MongoDB Atlas', mysql: 'MySQL / MariaDB', local: 'LocalStorage DB' };
+      return map[engine] || 'Supabase (PostgreSQL)';
+    }
+
+    function normalizeWaPhone(rawPhone) {
+      let digits = String(rawPhone || OFFICIAL_WA_RAW).replace(/[^0-9]/g, '');
+      if (!digits) digits = '584126497478';
+      if (digits.startsWith('0') && digits.length === 11) digits = '58' + digits.substring(1);
+      else if (digits.length === 10 && (digits.startsWith('412') || digits.startsWith('414') || digits.startsWith('424') || digits.startsWith('416') || digits.startsWith('426'))) digits = '58' + digits;
+      return digits;
+    }
+
+    function parseCSV(csvText) {
+      const rows = [];
+      let currentRow = [];
+      let currentField = '';
+      let insideQuotes = false;
+      for (let i = 0; i < csvText.length; i++) {
+        const char = csvText[i];
+        const nextChar = csvText[i + 1];
+        if (char === '"') {
+          if (insideQuotes && nextChar === '"') { currentField += '"'; i++; }
+          else insideQuotes = !insideQuotes;
+        } else if (char === ',' && !insideQuotes) {
+          currentRow.push(currentField.trim());
+          currentField = '';
+        } else if ((char === '\r' || char === '\n') && !insideQuotes) {
+          if (char === '\r' && nextChar === '\n') i++;
+          currentRow.push(currentField.trim());
+          currentField = '';
+          if (currentRow.some(col => col.length > 0)) rows.push(currentRow);
+          currentRow = [];
+        } else {
+          currentField += char;
+        }
+      }
+      if (currentField.length > 0 || currentRow.length > 0) {
+        currentRow.push(currentField.trim());
+        if (currentRow.some(col => col.length > 0)) rows.push(currentRow);
+      }
+      if (rows.length < 2) throw new Error('El archivo CSV debe contener al menos cabecera y 1 fila de datos.');
+      const headers = rows[0].map(h => h.trim().replace(/^"|"$/g, ''));
+      const records = [];
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r];
+        const obj = {};
+        headers.forEach((h, idx) => { obj[h] = row[idx] !== undefined ? row[idx] : ''; });
+        records.push(obj);
+      }
+      return records;
+    }
+
+    function exportToCSV(items) {
+      const headers = ['id', 'name', 'brand', 'carModel', 'engine', 'oem', 'type', 'connector', 'price', 'oldPrice', 'stock', 'warranty', 'badge'];
+      const escapeField = val => {
+        const str = String(val ?? '');
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) return `"${str.replace(/"/g, '""')}"`;
+        return str;
+      };
+      const headerRow = headers.join(',');
+      const dataRows = items.map(item => headers.map(h => escapeField(item[h])).join(','));
+      return [headerRow, ...dataRows].join('\n');
+    }
+
+    function exportToSQL(items) {
+      const safe = str => String(str ?? '').replace(/'/g, "''");
+      const inserts = items.map(b => 
+        `INSERT INTO bobinas_inventario (id, name, brand, car_model, engine, oem, type, connector, price, old_price, stock, warranty, badge) VALUES ('${safe(b.id)}', '${safe(b.name)}', '${safe(b.brand)}', '${safe(b.carModel)}', '${safe(b.engine)}', '${safe(b.oem)}', '${safe(b.type)}', '${safe(b.connector)}', ${Number(b.price).toFixed(2)}, ${Number(b.oldPrice || b.price * 1.2).toFixed(2)}, ${b.stock}, '${safe(b.warranty)}', '${safe(b.badge)}');`
+      ).join('\n');
+      return `-- DUMP SQL BOBINAS EXPRESS\n${inserts}`;
+    }
+
+    function downloadFile(content, fileName, mimeType = 'text/plain;charset=utf-8;') {
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    // --- CONTEXTS ---
+    const ToastContext = createContext(null);
+    function ToastProvider({ children }) {
+      const [toast, setToast] = useState({ message: '', visible: false });
+      const showToast = useCallback((message) => {
+        setToast({ message, visible: true });
+        setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 3200);
+      }, []);
+      return (
+        <ToastContext.Provider value={{ showToast }}>
+          {children}
+          <div className={`fixed bottom-6 right-6 z-50 transform transition-all duration-300 pointer-events-none ${toast.visible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
+            <div className="bg-slate-900 border border-brand-500/50 text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 backdrop-blur-md max-w-md">
+              <div className="h-8 w-8 rounded-xl bg-brand-500/20 text-brand-400 flex items-center justify-center shrink-0">
+                <i className="fa-solid fa-bell text-sm"></i>
+              </div>
+              <span className="text-xs font-semibold">{toast.message}</span>
+            </div>
+          </div>
+        </ToastContext.Provider>
+      );
+    }
+    const useToast = () => useContext(ToastContext);
+
+    const AuthContext = createContext(null);
+    function AuthProvider({ children }) {
+      const { showToast } = useToast();
+      const [isAdmin, setIsAdmin] = useState(() => localStorage.getItem('AUTOIGNITION_ADMIN_SESSION_V2') === 'true');
+      const [deviceId] = useState(() => {
+        let s = localStorage.getItem('AUTOIGNITION_PRIVATE_CLIENT_ID_V2');
+        if (!s) { s = 'CLI-' + Math.random().toString(36).substring(2, 8).toUpperCase(); localStorage.setItem('AUTOIGNITION_PRIVATE_CLIENT_ID_V2', s); }
+        return s;
+      });
+      const [authModalOpen, setAuthModalOpen] = useState(false);
+      const [authLockReason, setAuthLockReason] = useState('');
+      const [pendingAction, setPendingAction] = useState(null);
+
+      const login = (user, pass) => {
+        const u = String(user || '').trim().toLowerCase();
+        const p = String(pass || '').trim();
+        if ((u === 'admin' || u === 'dueno') && (p === 'admin123' || p === '4747')) {
+          setIsAdmin(true);
+          localStorage.setItem('AUTOIGNITION_ADMIN_SESSION_V2', 'true');
+          showToast('🔓 Sesión de Administrador iniciada: Módulos críticos desbloqueados');
+          setAuthModalOpen(false);
+          if (typeof pendingAction === 'function') { const act = pendingAction; setPendingAction(null); act(); }
+          return true;
+        } else {
+          showToast('❌ Credenciales incorrectas (Usa admin / admin123 o PIN 4747)');
+          return false;
+        }
+      };
+
+      const logout = () => {
+        setIsAdmin(false);
+        localStorage.removeItem('AUTOIGNITION_ADMIN_SESSION_V2');
+        showToast('🔒 Sesión de Administrador cerrada');
+      };
+
+      const requireAdminAuth = (callback, reason = 'Acción requiere sesión de Administrador.') => {
+        if (isAdmin) { callback(); return true; }
+        setPendingAction(() => callback);
+        setAuthLockReason(reason);
+        setAuthModalOpen(true);
+        return false;
+      };
+
+      return (
+        <AuthContext.Provider value={{ isAdmin, deviceId, login, logout, requireAdminAuth, authModalOpen, authLockReason, openAuthModal: (r) => { setAuthLockReason(r || ''); setAuthModalOpen(true); }, closeAuthModal: () => setAuthModalOpen(false) }}>
+          {children}
+        </AuthContext.Provider>
+      );
+    }
+    const useAuth = () => useContext(AuthContext);
+
+    const InventoryContext = createContext(null);
+    function InventoryProvider({ children }) {
+      const { showToast } = useToast();
+      const [coils, setCoils] = useState(() => {
+        try {
+          const s = localStorage.getItem('AUTOIGNITION_DB_INVENTORY_V2');
+          if (s) { const p = JSON.parse(s); if (Array.isArray(p) && p.length > 0) return p.map(normalizeCoilRecord); }
+        } catch (e) {}
+        return DEFAULT_BOBINAS_SEED.map(normalizeCoilRecord);
+      });
+      const [dbEngine, setDbEngine] = useState(() => localStorage.getItem('AUTOIGNITION_DB_ENGINE_V2') || 'supabase');
+      const [salesHistory, setSalesHistory] = useState(() => {
+        try { const s = localStorage.getItem('AUTOIGNITION_SALES_LOG_V1'); if (s) return JSON.parse(s); } catch (e) {}
+        return INITIAL_SALES_SEED;
+      });
+      const [ownerSettings, setOwnerSettings] = useState(() => {
+        try { const s = localStorage.getItem('AUTOIGNITION_OWNER_PREFS_V2'); if (s) return JSON.parse(s); } catch (e) {}
+        return {
+          ownerPhone: OFFICIAL_WA_RAW,
+          ownerName: 'Administrador Principal',
+          autoDeductStock: true,
+          soundAlert: true,
+          requireApproval: false,
+          systemPrompt: `Eres el Asesor Oficial de "Bobinas Express" para WhatsApp (0412-6497478). Consulta la base de datos en tiempo real, verifica el stock y cierra ventas.`
+        };
+      });
+      const [pendingOwnerAlert, setPendingOwnerAlert] = useState(null);
+
+      useEffect(() => { localStorage.setItem('AUTOIGNITION_DB_INVENTORY_V2', JSON.stringify(coils)); }, [coils]);
+      useEffect(() => { localStorage.setItem('AUTOIGNITION_SALES_LOG_V1', JSON.stringify(salesHistory)); }, [salesHistory]);
+      useEffect(() => { localStorage.setItem('AUTOIGNITION_DB_ENGINE_V2', dbEngine); }, [dbEngine]);
+      useEffect(() => { localStorage.setItem('AUTOIGNITION_OWNER_PREFS_V2', JSON.stringify(ownerSettings)); }, [ownerSettings]);
+
+      const changeDbEngine = (eng) => { setDbEngine(eng); showToast(`Motor cambiado a: ${eng.toUpperCase()}`); };
+      const updateOwnerSettings = (newSettings) => { setOwnerSettings(prev => ({ ...prev, ...newSettings })); showToast('Configuración guardada'); };
+      const upsertCoil = (raw) => {
+        const item = normalizeCoilRecord(raw);
+        setCoils(prev => {
+          const idx = prev.findIndex(b => b.id.toLowerCase() === item.id.toLowerCase());
+          if (idx >= 0) { const next = [...prev]; next[idx] = item; return next; }
+          return [item, ...prev];
+        });
+        showToast(`Bobina ${item.id} guardada`);
+      };
+      const deleteCoil = (id) => { setCoils(prev => prev.filter(b => b.id !== id)); showToast(`Bobina ${id} eliminada`); };
+      const restoreSeedData = () => { const fresh = DEFAULT_BOBINAS_SEED.map(normalizeCoilRecord); setCoils(fresh); showToast('Inventario restaurado'); };
+      const bulkImport = (records, replaceAll) => {
+        const norm = records.map(normalizeCoilRecord);
+        setCoils(prev => {
+          if (replaceAll) return norm;
+          const map = new Map();
+          prev.forEach(i => map.set(i.id.toLowerCase(), i));
+          norm.forEach(i => map.set(i.id.toLowerCase(), i));
+          return Array.from(map.values());
+        });
+        showToast(`Carga masiva: ${norm.length} productos procesados.`);
+      };
+
+      const processSaleTransaction = ({ coilId, qty, customerName, customerPhone, paymentRef, userId }) => {
+        let orderResult = null;
+        setCoils(currentCoils => {
+          const coil = currentCoils.find(b => b.id === coilId);
+          if (!coil) return currentCoils;
+          const reqQty = Math.max(1, parseInt(qty, 10) || 1);
+          if (coil.stock < reqQty) { showToast(`Stock insuficiente (${coil.stock} uds)`); return currentCoils; }
+          const stockAfter = ownerSettings.autoDeductStock ? Math.max(0, coil.stock - reqQty) : coil.stock;
+
+          const newOrder = {
+            orderId: `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            userId: userId || 'CLI-GUEST',
+            customerName: customerName || 'Cliente WhatsApp Directo',
+            customerPhone: customerPhone || 'WhatsApp',
+            coilId: coil.id,
+            coilName: coil.name,
+            oem: coil.oem.split('/')[0].trim(),
+            qty: reqQty,
+            unitPrice: coil.price,
+            totalPrice: Number((coil.price * reqQty).toFixed(2)),
+            stockBefore: coil.stock,
+            stockAfter,
+            paymentRef: paymentRef || 'Confirmación directa',
+            status: ownerSettings.requireApproval ? 'PENDING_APPROVAL' : 'CONFIRMED'
+          };
+          orderResult = newOrder;
+          setSalesHistory(prev => [newOrder, ...prev]);
+          setPendingOwnerAlert(newOrder);
+
+          if (ownerSettings.soundAlert) {
+            try {
+              const ctx = new (window.AudioContext || window.webkitAudioContext)();
+              const osc = ctx.createOscillator(); const gain = ctx.createGain();
+              osc.type = 'sine'; osc.frequency.setValueAtTime(880, ctx.currentTime); osc.frequency.setValueAtTime(1318.5, ctx.currentTime + 0.09);
+              gain.gain.setValueAtTime(0.12, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+              osc.connect(gain); gain.connect(ctx.destination); osc.start(); osc.stop(ctx.currentTime + 0.35);
+            } catch(e) {}
+          }
+
+          return currentCoils.map(item => item.id === coil.id ? { ...item, stock: stockAfter, inStock: stockAfter > 0 } : item);
+        });
+        return orderResult;
+      };
+
+      const revertSale = (orderId) => {
+        const ord = salesHistory.find(s => s.orderId === orderId);
+        if (!ord) return;
+        setCoils(currentCoils => currentCoils.map(item => item.id === ord.coilId ? { ...item, stock: item.stock + ord.qty, inStock: true } : item));
+        setSalesHistory(prev => prev.map(s => s.orderId === orderId ? { ...s, status: 'REVERTED' } : s));
+        showToast(`Venta #${orderId} revertida (+${ord.qty} unidades al stock)`);
+      };
+
+      return (
+        <InventoryContext.Provider value={{ coils, dbEngine, changeDbEngine, upsertCoil, deleteCoil, restoreSeedData, bulkImport, salesHistory, ownerSettings, updateOwnerSettings, processSaleTransaction, revertSale, pendingOwnerAlert, dismissOwnerAlert: () => setPendingOwnerAlert(null) }}>
+          {children}
+        </InventoryContext.Provider>
+      );
+    }
+    const useInventory = () => useContext(InventoryContext);
+
+    const CartContext = createContext(null);
+    function CartProvider({ children }) {
+      const { deviceId } = useAuth();
+      const { coils, processSaleTransaction, ownerSettings } = useInventory();
+      const { showToast } = useToast();
+      const [cart, setCart] = useState(() => {
+        try {
+          const s = localStorage.getItem('AUTOIGNITION_PRIVATE_CARTS_V2');
+          if (s) { const p = JSON.parse(s); if (p[deviceId]) return p[deviceId]; }
+        } catch(e) {}
+        return [];
+      });
+      const [isCartOpen, setIsCartOpen] = useState(false);
+      const [buyerDraft, setBuyerDraft] = useState(() => {
+        try { const s = localStorage.getItem('AUTOIGNITION_BUYER_DRAFT_V2'); if (s) return JSON.parse(s); } catch(e) {}
+        return { name: '', phone: '', car: '', payRef: '' };
+      });
+
+      const persistCart = (newCart) => {
+        try {
+          const s = localStorage.getItem('AUTOIGNITION_PRIVATE_CARTS_V2');
+          const all = s ? JSON.parse(s) : {};
+          all[deviceId] = newCart;
+          localStorage.setItem('AUTOIGNITION_PRIVATE_CARTS_V2', JSON.stringify(all));
+        } catch(e) {}
+      };
+
+      const updateBuyerDraft = (fields) => {
+        setBuyerDraft(prev => {
+          const next = { ...prev, ...fields };
+          localStorage.setItem('AUTOIGNITION_BUYER_DRAFT_V2', JSON.stringify(next));
+          return next;
+        });
+      };
+
+      const addToCart = (productId, requestedQty = 1) => {
+        const product = coils.find(b => b.id === productId);
+        if (!product || product.stock <= 0) { showToast('Sin stock disponible'); return; }
+        setCart(prev => {
+          const existing = prev.find(i => i.id === productId);
+          let next;
+          if (existing) {
+            if (existing.qty + requestedQty <= product.stock) {
+              next = prev.map(i => i.id === productId ? { ...i, qty: i.qty + requestedQty } : i);
+              showToast(`Carrito: ${existing.qty + requestedQty}x ${product.name}`);
+            } else {
+              showToast(`Límite de stock alcanzado (${product.stock} uds)`);
+              return prev;
+            }
+          } else {
+            next = [...prev, { id: product.id, name: product.name, price: product.price, oem: product.oem.split('/')[0].trim(), qty: 1, maxStock: product.stock }];
+            showToast(`Añadido: ${product.name}`);
+          }
+          persistCart(next);
+          return next;
+        });
+      };
+
+      const updateCartQty = (productId, delta) => {
+        setCart(prev => {
+          const product = coils.find(b => b.id === productId);
+          const max = product ? product.stock : 99;
+          const next = prev.map(item => {
+            if (item.id === productId) {
+              const n = item.qty + delta;
+              return { ...item, qty: Math.min(max, n) };
+            }
+            return item;
+          }).filter(item => item.qty > 0);
+          persistCart(next);
+          return next;
+        });
+      };
+
+      const removeFromCart = (id) => {
+        setCart(prev => {
+          const next = prev.filter(i => i.id !== id);
+          persistCart(next);
+          return next;
+        });
+        showToast('Producto eliminado');
+      };
+
+      const checkoutViaWhatsApp = () => {
+        if (cart.length === 0) { showToast('El carrito está vacío'); return; }
+        if (!buyerDraft.name.trim() || !buyerDraft.phone.trim()) { showToast('Ingresa Nombre y WhatsApp para ordenar'); return; }
+
+        const orderIds = [];
+        cart.forEach(item => {
+          const res = processSaleTransaction({
+            coilId: item.id,
+            qty: item.qty,
+            customerName: buyerDraft.name.trim(),
+            customerPhone: buyerDraft.phone.trim(),
+            paymentRef: buyerDraft.payRef.trim() || 'Coordinar por WA',
+            userId: deviceId
+          });
+          if (res) orderIds.push(res.orderId);
+        });
+
+        const itemsText = cart.map(i => `• ${i.qty}x ${i.name} ($${Number(i.price).toFixed(2)})`).join('\n');
+        const totalVal = cart.reduce((acc, curr) => acc + (curr.price * curr.qty), 0);
+        const orderTag = orderIds.join(', ') || 'ORD-WA';
+
+        const msg = `⚡ *NUEVO PEDIDO CONFIRMADO (${orderTag}) - BOBINAS EXPRESS*\n\n` +
+          `👤 *Cliente:* ${buyerDraft.name} (${buyerDraft.phone})\n` +
+          `🚗 *Vehículo:* ${buyerDraft.car || 'Por especificar'}\n` +
+          `💳 *Pago:* ${buyerDraft.payRef || 'A coordinar'}\n\n` +
+          `📦 *Repuestos:*\n${itemsText}\n\n` +
+          `💰 *Total:* $${totalVal.toFixed(2)} USD\n\n` +
+          `✅ *Stock reservado en sistema.*`;
+
+        const phone = normalizeWaPhone(ownerSettings.ownerPhone);
+        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
+        setCart([]);
+        persistCart([]);
+        setIsCartOpen(false);
+      };
+
+      const cartCount = cart.reduce((acc, curr) => acc + curr.qty, 0);
+      const cartSubtotal = cart.reduce((acc, curr) => acc + (curr.price * curr.qty), 0);
+
+      return (
+        <CartContext.Provider value={{ cart, cartCount, cartSubtotal, isCartOpen, setIsCartOpen, toggleCart: () => setIsCartOpen(p => !p), closeCart: () => setIsCartOpen(false), addToCart, updateCartQty, removeFromCart, buyerDraft, updateBuyerDraft, checkoutViaWhatsApp }}>
+          {children}
+        </CartContext.Provider>
+      );
+    }
+    const useCart = () => useContext(CartContext);
+
+    // --- COMPONENTS ---
+    function TopNoticeBar() {
+      const { dbEngine, coils } = useInventory();
+      const { isAdmin } = useAuth();
+      return (
+        <aside aria-label="Estado del sistema" className="bg-gradient-to-r from-amber-600 via-brand-600 to-amber-700 text-xs py-1.5 px-4 text-center font-medium flex flex-wrap items-center justify-center gap-2 text-white shadow-sm">
+          <span className="flex h-2 w-2 relative">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+          </span>
+          <span>
+            ⚡ <strong>Despachos Inmediatos a Todo el País</strong> |{' '}
+            <a
+              href="https://wa.me/584126497478"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline font-bold hover:text-amber-200 transition"
+            >
+              WhatsApp
+            </a>
+          </span>
+          {isAdmin && (
+            <span className="hidden md:inline-flex items-center gap-1.5 bg-black/25 px-2.5 py-0.5 rounded-full text-[11px] text-amber-100 border border-white/15">
+              <i className="fa-solid fa-database text-[10px] text-emerald-300"></i>
+              <span>DB: {getEngineLabel(dbEngine)} ({coils.length} items)</span>
+            </span>
+          )}
+          {isAdmin && (
+            <span className="inline-flex items-center gap-1.5 bg-slate-950/50 px-2.5 py-0.5 rounded-full text-[11px] text-white border border-white/20">
+              <i className="fa-solid fa-unlock-keyhole text-emerald-400 text-[10px]"></i>
+              <span>🔐 Sesión: Administrador Activo</span>
+            </span>
+          )}
+        </aside>
+      );
+    }
+
+    function Header({ activeTab, setActiveTab }) {
+      const { isAdmin, openAuthModal, logout, requireAdminAuth } = useAuth();
+      const { cartCount, toggleCart } = useCart();
+      const { salesHistory, ownerSettings } = useInventory();
+
+      const handleNav = (tab) => {
+        if (['sales', 'database', 'admin'].includes(tab) && !isAdmin) {
+          requireAdminAuth(() => setActiveTab(tab), `Acceso a "${tab.toUpperCase()}" requiere sesión de Administrador.`);
+          return;
+        }
+        setActiveTab(tab);
+      };
+
+      return (
+        <header className="bg-slate-800/90 backdrop-blur-md sticky top-0 z-40 border-b border-slate-700/80">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-3 shrink-0 cursor-pointer" onClick={() => setActiveTab('catalog')}>
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-brand-600 to-amber-500 flex items-center justify-center shadow-lg shadow-brand-500/20 text-white">
+                <i className="fa-solid fa-bolt text-lg"></i>
+              </div>
+              <div>
+                <span className="text-lg sm:text-xl font-extrabold tracking-tight text-white flex items-center gap-1">
+                  BOBINAS<span className="text-brand-500">EXPRESS</span>
+                </span>
+                <p className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold -mt-1">WhatsApp • React Modular</p>
+              </div>
+            </div>
+
+            <nav className="flex items-center gap-1 bg-slate-950/70 p-1 rounded-xl border border-slate-700/60 overflow-x-auto max-w-full">
+              {[
+                { id: 'catalog', label: 'Catálogo', icon: 'fa-solid fa-car-battery' },
+                { id: 'simulator', label: 'Agente IA WhatsApp', icon: 'fa-brands fa-whatsapp text-emerald-400' },
+                ...(isAdmin ? [
+                  { id: 'sales', label: 'Ventas & Auditoría', icon: 'fa-solid fa-cash-register text-amber-400', badge: salesHistory.length, lock: true },
+                  { id: 'database', label: 'Base de Datos & Stock', icon: 'fa-solid fa-database text-sky-400', lock: true },
+                  { id: 'admin', label: 'Configurar IA', icon: 'fa-solid fa-sliders', lock: true }
+                ] : [])
+              ].map(btn => (
+                <button
+                  key={btn.id}
+                  onClick={() => handleNav(btn.id)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${activeTab === btn.id ? 'bg-brand-500 text-white shadow' : 'text-slate-300 hover:text-white hover:bg-slate-800'}`}
+                >
+                  <i className={btn.icon}></i>
+                  <span>{btn.label}</span>
+                  {btn.lock && <i className={`fa-solid ${isAdmin ? 'fa-lock-open text-emerald-400' : 'fa-lock text-amber-400/90'} text-[9px]`}></i>}
+                  {btn.badge !== undefined && <span className="bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded-full text-[10px] font-mono">{btn.badge}</span>}
+                </button>
+              ))}
+            </nav>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {isAdmin ? (
+                <button onClick={logout} className="px-3 py-1.5 bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
+                  <i className="fa-solid fa-unlock-keyhole text-emerald-400"></i>
+                  <span className="hidden sm:inline">Admin Activo</span>
+                </button>
+              ) : (
+                <button onClick={() => openAuthModal()} className="px-3 py-1.5 bg-slate-900 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold transition flex items-center gap-1.5">
+                  <i className="fa-solid fa-user-shield text-amber-400"></i>
+                  <span className="hidden sm:inline">Acceso Admin</span>
+                </button>
+              )}
+
+              <button onClick={() => window.open(`https://wa.me/${normalizeWaPhone(ownerSettings.ownerPhone)}`, '_blank')} className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/20 text-emerald-400 border border-emerald-500/40 rounded-xl text-xs font-semibold hover:bg-emerald-600/30 transition cursor-pointer">
+                <i className="fa-brands fa-whatsapp text-sm"></i>
+                <span>WhatsApp</span>
+              </button>
+
+              <button onClick={toggleCart} className="relative p-2.5 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded-xl transition shadow flex items-center justify-center">
+                <i className="fa-solid fa-cart-shopping"></i>
+                <span className="absolute -top-1.5 -right-1.5 bg-brand-500 text-white font-bold text-[10px] h-5 w-5 rounded-full flex items-center justify-center border-2 border-slate-900">{cartCount}</span>
+              </button>
+            </div>
+          </div>
+        </header>
+      );
+    }
+
+    function CoilCard({ coil, onAskAI, onEdit }) {
+      const { addToCart } = useCart();
+      const { isAdmin, requireAdminAuth } = useAuth();
+      return (
+        <div className="bg-slate-800/90 border border-slate-700/80 hover:border-brand-500/50 rounded-2xl p-5 flex flex-col justify-between shadow-lg transition group">
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-brand-500/20 text-brand-400 border border-brand-500/30">{coil.badge || 'OEM Spec'}</span>
+              <div className={`flex items-center gap-1.5 text-xs ${coil.stock > 0 ? 'text-emerald-400' : 'text-rose-400'} font-medium`}>
+                <span className={`h-2 w-2 rounded-full ${coil.stock > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`}></span>
+                <span>{coil.stock > 0 ? `${coil.stock} en stock` : 'Agotado (0)'}</span>
+              </div>
+            </div>
+
+            <div className="h-32 rounded-xl bg-slate-950 border border-slate-700/60 flex flex-col items-center justify-center p-3 text-center mb-4 relative">
+              <i className={`fa-solid fa-car-battery text-4xl ${coil.stock > 0 ? 'text-brand-500/80' : 'text-slate-600'} mb-2`}></i>
+              <span className="text-[10px] font-mono text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">OEM: {coil.oem.split('/')[0].trim()}</span>
+              <span className="absolute top-2 right-2 text-[10px] font-semibold text-slate-400 bg-slate-900/90 px-2 py-0.5 rounded">
+                <i className="fa-solid fa-shield text-amber-400 mr-1"></i>{coil.warranty}
+              </span>
+              <span className="absolute bottom-1.5 left-2 text-[9px] font-mono text-slate-500">{coil.id}</span>
+            </div>
+
+            <div className="space-y-1 mb-3">
+              <span className="text-xs font-bold text-brand-400 uppercase">{coil.brand}</span>
+              <h3 className="text-base font-bold text-white leading-snug">{coil.name}</h3>
+              <p className="text-xs text-slate-300 flex items-center gap-1 pt-1"><i className="fa-solid fa-car-side text-slate-400"></i> {coil.carModel}</p>
+              <p className="text-xs text-slate-400 flex items-center gap-1"><i className="fa-solid fa-gears text-slate-500"></i> <span className="font-mono">{coil.engine}</span></p>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5 my-3 text-[10px]">
+              <span className="px-2 py-0.5 bg-slate-900 text-slate-300 rounded border border-slate-700">{coil.connector}</span>
+              <span className="px-2 py-0.5 bg-slate-900 text-slate-300 rounded border border-slate-700">{coil.type}</span>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-slate-700/70 space-y-3">
+            <div className="flex items-baseline justify-between">
+              <div>
+                <span className="text-2xl font-extrabold text-white font-mono">{formatUSD(coil.price)}</span>
+                <span className="text-xs text-slate-400 line-through ml-1 font-mono">{formatUSD(coil.oldPrice)}</span>
+              </div>
+              {isAdmin && (
+                <button onClick={() => requireAdminAuth(() => onEdit(coil))} className="text-[11px] text-slate-400 hover:text-sky-400 flex items-center gap-1">
+                  <i className="fa-solid fa-lock-open text-emerald-400 text-[9px]"></i> Editar DB
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => addToCart(coil.id)} disabled={coil.stock <= 0} className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition ${coil.stock > 0 ? 'bg-brand-500 hover:bg-brand-600 text-white cursor-pointer' : 'bg-slate-700 text-slate-400 cursor-not-allowed'}`}>
+                <i className={`fa-solid ${coil.stock > 0 ? 'fa-cart-plus' : 'fa-ban'}`}></i>
+                <span>{coil.stock > 0 ? 'Agregar' : 'Sin Stock'}</span>
+              </button>
+              <button onClick={() => onAskAI(coil)} className="px-3 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer">
+                <i className="fa-brands fa-whatsapp text-sm"></i>
+                <span>Consultar IA</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function CatalogView({ onNavigateTab, onAskAI, onEdit }) {
+      const { coils } = useInventory();
+      const { toggleCart } = useCart();
+      const { isAdmin, openAuthModal } = useAuth();
+      const [q, setQ] = useState('');
+      const [brand, setBrand] = useState('ALL');
+      const [stock, setStock] = useState('ALL');
+
+      const brands = useMemo(() => Array.from(new Set(coils.map(c => c.brand))).sort(), [coils]);
+
+      const filtered = useMemo(() => {
+        const query = q.toLowerCase().trim();
+        return coils.filter(i => {
+          const matchQ = !query || i.name.toLowerCase().includes(query) || i.carModel.toLowerCase().includes(query) || i.oem.toLowerCase().includes(query) || i.brand.toLowerCase().includes(query);
+          const matchB = brand === 'ALL' || i.brand.toLowerCase() === brand.toLowerCase();
+          let matchS = true;
+          if (stock === 'IN_STOCK') matchS = i.stock > 0;
+          else if (stock === 'OUT_OF_STOCK') matchS = i.stock <= 0;
+          else if (stock === 'PROMO') matchS = i.badge === 'Oferta' || i.price < i.oldPrice;
+          return matchQ && matchB && matchS;
+        });
+      }, [coils, q, brand, stock]);
+
+      return (
+        <div className="space-y-6">
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-brand-950 border border-slate-700/80 p-6 md:p-8 shadow-xl">
+            <div className="relative z-10 max-w-2xl space-y-3">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-500/20 border border-brand-500/40 text-brand-400 text-xs font-bold uppercase">
+                <i className="fa-solid fa-circle-check"></i> Stock Conectado en Tiempo Real
+              </div>
+              <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
+                Bobinas de Encendido <span className="text-brand-500">Originales & OEM</span>
+              </h1>
+              <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
+                Especialistas en bobinas tipo Lápiz, Riel múltiple y Módulo para Chevrolet, Ford, Toyota, Hyundai, Nissan, Renault y más.
+              </p>
+              <div className="pt-2 flex flex-wrap gap-3">
+                <button onClick={() => onNavigateTab('simulator')} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow transition cursor-pointer">
+                  <i className="fa-brands fa-whatsapp text-base"></i> Consultar disponibilidad con IA
+                </button>
+                <button onClick={toggleCart} className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow transition cursor-pointer">
+                  <i className="fa-solid fa-cart-shopping"></i> Ver Mi Carrito
+                </button>
+                {isAdmin && (
+                  <button onClick={() => onNavigateTab('database')} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 font-semibold rounded-xl text-xs sm:text-sm border border-amber-500/40 flex items-center gap-2 transition cursor-pointer">
+                    <i className="fa-solid fa-user-shield"></i> Panel Administrador (Stock / DB)
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="absolute -right-8 -bottom-10 opacity-20 pointer-events-none text-slate-100">
+              <i className="fa-solid fa-car-battery text-[240px]"></i>
+            </div>
+          </div>
+
+          <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 sm:p-5 shadow-lg space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 sm:gap-4">
+              <div className="relative md:col-span-2">
+                <i className="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                <input type="text" value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar por modelo (Captiva, Corsa, Aveo) o OEM..." className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-brand-500" />
+              </div>
+              <div>
+                <select value={brand} onChange={e => setBrand(e.target.value)} className="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-200">
+                  <option value="ALL">Todas las marcas ({brands.length})</option>
+                  {brands.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+              <div>
+                <select value={stock} onChange={e => setStock(e.target.value)} className="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-200">
+                  <option value="ALL">Cualquier disponibilidad</option>
+                  <option value="IN_STOCK">En Stock Inmediato</option>
+                  <option value="OUT_OF_STOCK">Agotadas (0 unidades)</option>
+                  <option value="PROMO">Con Oferta Especial</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            {filtered.map(coil => (
+              <CoilCard key={coil.id} coil={coil} onAskAI={onAskAI} onEdit={onEdit} />
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function SimulatorView({ initialPrompt, onTriggerSale }) {
+      const { coils, dbEngine, ownerSettings, processSaleTransaction } = useInventory();
+      const { deviceId } = useAuth();
+      const [input, setInput] = useState('');
+      const [isTyping, setIsTyping] = useState(false);
+      const [logs, setLogs] = useState([]);
+      const [messages, setMessages] = useState(() => [
+        { id: '1', sender: 'bot', html: `¡Hola! 👋 Soy el <strong>Asesor Virtual Inteligente de Bobinas Express</strong>.<br><br>Estoy conectado a <strong>${getEngineLabel(dbEngine)}</strong> con <strong>${coils.length} bobinas</strong> registradas. ¿Qué modelo o código OEM necesitas?`, badge: `Conectado a ${getEngineLabel(dbEngine)}`, time: 'Ahora' }
+      ]);
+      const endRef = useRef(null);
+
+      useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, isTyping]);
+      useEffect(() => { if (initialPrompt) handleSend(initialPrompt); }, [initialPrompt]);
+
+      const handleSend = (textToSend) => {
+        const text = String(textToSend || input).trim();
+        if (!text) return;
+        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        setMessages(prev => [...prev, { id: Math.random().toString(), sender: 'user', text, time }]);
+        setInput('');
+        setIsTyping(true);
+
+        setTimeout(() => {
+          setIsTyping(false);
+          const clean = text.toLowerCase();
+          const tokens = clean.replace(/[¿?¡!.,;:#()]/g, ' ').split(/\s+/).filter(w => w.length >= 2 && !['hola', 'tienen', 'precio', 'bobina', 'para', 'de', 'el', 'la'].includes(w));
+
+          let bestMatch = null;
+          let maxScore = 0;
+          coils.forEach(item => {
+            const h = `${item.id} ${item.name} ${item.brand} ${item.carModel} ${item.engine} ${item.oem}`.toLowerCase();
+            let score = 0;
+            tokens.forEach(tk => { if (h.includes(tk)) score += 3; });
+            if (score > maxScore) { maxScore = score; bestMatch = item; }
+          });
+
+          const isBuy = clean.includes('comprar') || clean.includes('pago') || clean.includes('ref') || clean.includes('confirmo');
+          let botHtml = '';
+          let product = null;
+
+          if (isBuy && bestMatch && bestMatch.stock > 0) {
+            const ord = processSaleTransaction({ coilId: bestMatch.id, qty: 1, customerName: 'Cliente Chat WA', customerPhone: 'WhatsApp', paymentRef: text, userId: deviceId });
+            botHtml = `🎉 <strong>¡VENTA CONFIRMADA! (#${ord.orderId})</strong><br><br>Descontamos 1x <strong>${bestMatch.name}</strong> del inventario:<br>• <strong>Total:</strong> <span class="text-emerald-400 font-bold">${formatUSD(bestMatch.price)} USD</span><br>• <strong>Nuevo Stock DB:</strong> ${ord.stockBefore} ➔ <strong>${ord.stockAfter} uds</strong><br><br>📲 <em>Alerta enviada al dueño al ${ownerSettings.ownerPhone}.</em>`;
+            setLogs(prev => [{ id: Math.random().toString(), time, query: `TX COMMIT: #${ord.orderId} [${bestMatch.id}]`, count: 1, engine: getEngineLabel(dbEngine), latency: 25 }, ...prev]);
+          } else if (bestMatch && maxScore > 0) {
+            product = bestMatch;
+            if (bestMatch.stock > 0) {
+              botHtml = `✅ ¡Sí, disponible en stock inmediato!<br><br>• <strong>${bestMatch.name}</strong><br>• <strong>Aplicación:</strong> ${bestMatch.carModel}<br>• <strong>Precio:</strong> <span class="text-brand-400 font-bold">${formatUSD(bestMatch.price)} USD</span><br>• <strong>Stock:</strong> <span class="text-emerald-400 font-bold">${bestMatch.stock} unidades</span><br>• <strong>OEM:</strong> <code>${bestMatch.oem}</code><br><br>Escribe <code>"Quiero comprar ref 12345"</code> o usa el botón abajo para cerrar tu compra.`;
+            } else {
+              botHtml = `⚠️ La <strong>${bestMatch.name}</strong> se encuentra temporalmente con <strong>Stock: 0 unidades</strong>.<br>Precio: ${formatUSD(bestMatch.price)} USD. ¿Deseas encargarla bajo pedido?`;
+            }
+            setLogs(prev => [{ id: Math.random().toString(), time, query: `SELECT * WHERE id='${bestMatch.id}'`, count: 1, engine: getEngineLabel(dbEngine), latency: 32 }, ...prev]);
+          } else {
+            botHtml = `Consulté la base de datos para <em>"${text}"</em> y no encontré un registro exacto. Escríbeme la marca, modelo de auto o código OEM para verificar.`;
+            setLogs(prev => [{ id: Math.random().toString(), time, query: `SELECT * WHERE name LIKE '%${tokens.join(' ')}%'`, count: 0, engine: getEngineLabel(dbEngine), latency: 18 }, ...prev]);
+          }
+
+          setMessages(prev => [...prev, { id: Math.random().toString(), sender: 'bot', html: botHtml, product, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+        }, 500);
+      };
+
+      return (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 bg-slate-900 border border-slate-700/80 rounded-2xl flex flex-col h-[580px] overflow-hidden shadow-2xl relative">
+            <div className="bg-[#075e54] text-white p-3.5 flex items-center justify-between shadow">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-slate-900 border-2 border-emerald-400 flex items-center justify-center font-bold text-brand-500">
+                  <i className="fa-solid fa-bolt text-lg"></i>
+                </div>
+                <div>
+                  <div className="font-bold text-sm">Bobinas Express AI <i className="fa-solid fa-circle-check text-sky-300 text-xs"></i></div>
+                  <p className="text-[10px] text-emerald-200">Oficial {ownerSettings.ownerPhone} • En línea</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-[#0b141a]">
+              {messages.map(m => (
+                <div key={m.id} className={`flex ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  {m.sender === 'user' ? (
+                    <div className="relative bg-[#005c4b] text-[#e9edef] rounded-lg rounded-tr-none p-3 shadow max-w-[85%] chat-bubble-tail-out text-xs sm:text-sm">
+                      <p>{m.text}</p>
+                      <span className="block text-right text-[9px] text-gray-300 mt-1">{m.time} <i className="fa-solid fa-check-double text-sky-400"></i></span>
+                    </div>
+                  ) : (
+                    <div className="relative bg-[#202c33] text-[#e9edef] rounded-lg rounded-tl-none p-3 shadow max-w-[85%] chat-bubble-tail-in text-xs sm:text-sm">
+                      <div className="font-semibold text-brand-400 text-[10px] uppercase mb-1"><i className="fa-solid fa-microchip"></i> Asesor Bobinas Express AI</div>
+                      <div dangerouslySetInnerHTML={{ __html: m.html }} />
+                      {m.product && (
+                        <div className="mt-3 pt-2.5 border-t border-slate-700/60 flex flex-wrap gap-2">
+                          <button onClick={() => onTriggerSale(m.product)} className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-[11px] flex items-center gap-1 shadow cursor-pointer">
+                            <i className="fa-solid fa-cash-register"></i> Cerrar Venta en WA ({formatUSD(m.product.price)})
+                          </button>
+                        </div>
+                      )}
+                      <span className="block text-right text-[9px] text-gray-400 mt-1">{m.time}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {isTyping && <div className="text-xs text-gray-400 italic">Consultando base de datos...</div>}
+              <div ref={endRef} />
+            </div>
+
+            <div className="p-3 bg-slate-900 border-t border-slate-800 flex items-center gap-2">
+              <input type="text" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleSend(); }} placeholder="Escribe tu consulta (Ej: ¿Tienen la bobina para Captiva 3.2?)..." className="flex-1 px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs sm:text-sm text-white focus:outline-none focus:border-emerald-500" />
+              <button onClick={() => handleSend()} className="h-10 w-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center cursor-pointer"><i className="fa-solid fa-paper-plane"></i></button>
+            </div>
+          </div>
+
+          <div className="bg-slate-950 border border-slate-800 rounded-2xl flex flex-col h-[580px] overflow-hidden p-3 font-mono text-[11px]">
+            <div className="font-bold text-white mb-2 pb-2 border-b border-slate-800 flex items-center justify-between">
+              <span><i className="fa-solid fa-terminal text-sky-400"></i> Monitor SQL en Vivo</span>
+              <button onClick={() => setLogs([])} className="text-slate-500 hover:text-white text-[10px]">Limpiar</button>
+            </div>
+            <div className="flex-1 overflow-y-auto space-y-2">
+              {logs.map(l => (
+                <div key={l.id} className="p-2 bg-slate-900 rounded border border-slate-800 text-[10px] space-y-0.5">
+                  <div className="text-emerald-400">{l.time} ({l.latency}ms)</div>
+                  <div className="text-sky-300">&gt; {l.query}</div>
+                  <div className="text-slate-400">Resultados: {l.count} filas</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function SalesView({ onOpenManualSale }) {
+      const { salesHistory, revertSale } = useInventory();
+      return (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl sm:text-2xl font-extrabold text-white">Auditoría de Ventas en Vivo</h2>
+              <p className="text-xs text-slate-400">Descuento automático de stock con alertas al WhatsApp del dueño (0412-6497478).</p>
+            </div>
+            <button onClick={onOpenManualSale} className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow">
+              <i className="fa-solid fa-plus"></i> Registrar Venta Manual
+            </button>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl overflow-hidden shadow-xl">
+            <table className="w-full text-left text-xs text-slate-300">
+              <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] font-mono">
+                <tr>
+                  <th className="py-3 px-4">Orden</th>
+                  <th className="py-3 px-4">Hora</th>
+                  <th className="py-3 px-4">Cliente</th>
+                  <th className="py-3 px-4">Bobina</th>
+                  <th className="py-3 px-4">Total</th>
+                  <th className="py-3 px-4">Stock (Antes ➔ Ahora)</th>
+                  <th className="py-3 px-4">Estado</th>
+                  <th className="py-3 px-4 text-right">Acción</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {salesHistory.map(ord => (
+                  <tr key={ord.orderId} className="hover:bg-slate-800/50">
+                    <td className="py-3 px-4 font-mono font-bold text-brand-400">#{ord.orderId}</td>
+                    <td className="py-3 px-4 text-slate-400">{ord.timestamp}</td>
+                    <td className="py-3 px-4 text-white">{ord.customerName}</td>
+                    <td className="py-3 px-4">{ord.qty}x {ord.coilName}</td>
+                    <td className="py-3 px-4 text-emerald-400 font-bold">{formatUSD(ord.totalPrice)}</td>
+                    <td className="py-3 px-4 font-mono text-[11px]">{ord.stockBefore} ➔ <span className="text-emerald-400 font-bold">{ord.stockAfter} uds</span></td>
+                    <td className="py-3 px-4">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${ord.status === 'CONFIRMED' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                        {ord.status}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      {ord.status === 'CONFIRMED' && (
+                        <button onClick={() => revertSale(ord.orderId)} className="text-rose-400 hover:text-rose-300 text-xs p-1" title="Revertir venta">
+                          <i className="fa-solid fa-rotate-left"></i> Revertir
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    function DatabaseView({ onOpenCreate, onOpenEdit, onOpenBulk, onOpenSchema }) {
+      const { coils, dbEngine, changeDbEngine, deleteCoil, restoreSeedData } = useInventory();
+      const { requireAdminAuth } = useAuth();
+      return (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl sm:text-2xl font-extrabold text-white">Base de Datos Multi-Motor</h2>
+              <p className="text-xs text-slate-400">Gestiona inventario en Supabase, MongoDB, MySQL o LocalStorage.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={onOpenCreate} className="px-3.5 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow">
+                <i className="fa-solid fa-plus"></i> Insertar Bobina
+              </button>
+              <button onClick={onOpenBulk} className="px-3.5 py-2 bg-slate-800 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
+                <i className="fa-solid fa-file-import text-sky-400"></i> Carga Masiva
+              </button>
+              <button onClick={() => { const csv = exportToCSV(coils); downloadFile(csv, 'bobinas.csv', 'text/csv'); }} className="px-3.5 py-2 bg-slate-800 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
+                <i className="fa-solid fa-file-csv text-emerald-400"></i> Exportar CSV
+              </button>
+              <button onClick={onOpenSchema} className="px-3.5 py-2 bg-slate-800 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
+                <i className="fa-solid fa-code text-purple-400"></i> Esquemas DDL
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl overflow-hidden shadow-xl">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-300">
+                <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] font-mono">
+                  <tr>
+                    <th className="py-3 px-4">ID</th>
+                    <th className="py-3 px-4">Marca & Bobina</th>
+                    <th className="py-3 px-4">Vehículos</th>
+                    <th className="py-3 px-4">OEM</th>
+                    <th className="py-3 px-4">Precio</th>
+                    <th className="py-3 px-4 text-center">Stock</th>
+                    <th className="py-3 px-4 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800">
+                  {coils.map(b => (
+                    <tr key={b.id} className="hover:bg-slate-800/50">
+                      <td className="py-3 px-4 font-mono font-bold text-sky-400">{b.id}</td>
+                      <td className="py-3 px-4 text-white font-medium">{b.name}</td>
+                      <td className="py-3 px-4 text-slate-300">{b.carModel}</td>
+                      <td className="py-3 px-4 font-mono text-slate-400">{b.oem}</td>
+                      <td className="py-3 px-4 text-brand-400 font-bold">{formatUSD(b.price)}</td>
+                      <td className="py-3 px-4 text-center"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${b.stock > 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>{b.stock} uds</span></td>
+                      <td className="py-3 px-4 text-right space-x-2">
+                        <button onClick={() => requireAdminAuth(() => onEdit(b))} className="text-sky-400 p-1"><i className="fa-solid fa-pen-to-square"></i></button>
+                        <button onClick={() => requireAdminAuth(() => deleteCoil(b.id))} className="text-rose-400 p-1"><i className="fa-solid fa-trash-can"></i></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function AdminConfigView() {
+      const { ownerSettings, updateOwnerSettings } = useInventory();
+      const [phone, setPhone] = useState(ownerSettings.ownerPhone);
+      const [prompt, setPrompt] = useState(ownerSettings.systemPrompt);
+
+      return (
+        <div className="max-w-2xl mx-auto space-y-6">
+          <h2 className="text-xl sm:text-2xl font-extrabold text-white">Configuración del Agente IA & Dueño</h2>
+          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl p-6 space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">WhatsApp del Dueño (Confirmaciones)</label>
+              <input type="text" value={phone} onChange={e => setPhone(e.target.value)} className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">Prompt de Instrucciones de la IA</label>
+              <textarea rows={6} value={prompt} onChange={e => setPrompt(e.target.value)} className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white font-mono" />
+            </div>
+            <button onClick={() => updateOwnerSettings({ ownerPhone: phone, systemPrompt: prompt })} className="px-5 py-2.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl text-xs font-bold cursor-pointer shadow">
+              Guardar Configuración
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    function CartDrawer() {
+      const { isCartOpen, closeCart, cart, cartSubtotal, updateCartQty, removeFromCart, buyerDraft, updateBuyerDraft, checkoutViaWhatsApp } = useCart();
+      if (!isCartOpen) return null;
+      return (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/70 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-slate-900 border-l border-slate-700 p-5 flex flex-col justify-between">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="font-bold text-white text-sm"><i className="fa-solid fa-cart-shopping text-brand-400 mr-2"></i> Mi Carrito</h3>
+              <button onClick={closeCart} className="text-slate-400 hover:text-white"><i className="fa-solid fa-xmark"></i></button>
+            </div>
+            <div className="flex-1 overflow-y-auto py-4 space-y-3">
+              {cart.length === 0 ? <p className="text-slate-500 text-center py-10 text-xs">Tu carrito está vacío</p> : cart.map(item => (
+                <div key={item.id} className="p-3 bg-slate-800 rounded-xl flex items-center justify-between text-xs">
+                  <div>
+                    <div className="font-bold text-white">{item.name}</div>
+                    <div className="text-brand-400 font-bold">{formatUSD(item.price)}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => updateCartQty(item.id, -1)} className="w-6 h-6 bg-slate-700 text-white rounded">-</button>
+                    <span className="font-bold text-white">{item.qty}</span>
+                    <button onClick={() => updateCartQty(item.id, 1)} className="w-6 h-6 bg-slate-700 text-white rounded">+</button>
+                    <button onClick={() => removeFromCart(item.id)} className="text-rose-400 p-1"><i className="fa-solid fa-trash"></i></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {cart.length > 0 && (
+              <div className="space-y-3 pt-3 border-t border-slate-800 text-xs">
+                <input type="text" value={buyerDraft.name} onChange={e => updateBuyerDraft({ name: e.target.value })} placeholder="Tu Nombre *" className="w-full p-2 bg-slate-800 border border-slate-700 rounded-lg text-white" />
+                <input type="text" value={buyerDraft.phone} onChange={e => updateBuyerDraft({ phone: e.target.value })} placeholder="Tu WhatsApp *" className="w-full p-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-mono" />
+                <div className="flex justify-between font-bold text-white text-sm">
+                  <span>Total:</span>
+                  <span className="text-emerald-400 font-mono">{formatUSD(cartSubtotal)}</span>
+                </div>
+                <button onClick={checkoutViaWhatsApp} className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow">
+                  <i className="fa-brands fa-whatsapp text-lg"></i> Enviar Pedido a WhatsApp
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function AuthModal() {
+      const { authModalOpen, closeAuthModal, login, authLockReason } = useAuth();
+      const [u, setU] = useState('admin');
+      const [p, setP] = useState('');
+      if (!authModalOpen) return null;
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-sm w-full space-y-4">
+            <h3 className="text-base font-bold text-white text-center"><i className="fa-solid fa-lock text-amber-400 mr-2"></i> Acceso Administrador</h3>
+            {authLockReason && <p className="text-xs text-amber-300 bg-amber-500/10 p-2.5 rounded-lg border border-amber-500/20">{authLockReason}</p>}
+            <input type="text" value={u} onChange={e => setU(e.target.value)} placeholder="Usuario (admin)" className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white" />
+            <input type="password" value={p} onChange={e => setP(e.target.value)} placeholder="Contraseña (admin123 o PIN 4747)" className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white font-mono" />
+            <button onClick={() => login(u, p)} className="w-full py-2.5 bg-brand-500 hover:bg-brand-600 text-white font-bold rounded-xl text-xs cursor-pointer shadow">Ingresar</button>
+            <button onClick={closeAuthModal} className="w-full text-xs text-slate-400 hover:text-white">Cancelar</button>
+          </div>
+        </div>
+      );
+    }
+
+    function App() {
+      const [tab, setTab] = useState('catalog');
+      const [initialPrompt, setInitialPrompt] = useState('');
+      const [editCoil, setEditCoil] = useState(null);
+      const [createModal, setCreateModal] = useState(false);
+      const [bulkModal, setBulkModal] = useState(false);
+      const [bulkText, setBulkText] = useState('');
+      const { upsertCoil, bulkImport } = useInventory();
+
+      return (
+        <div className="flex flex-col min-h-screen">
+          <TopNoticeBar />
+          <Header activeTab={tab} setActiveTab={setTab} />
+          <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+            {tab === 'catalog' && (
+              <CatalogView
+                onNavigateTab={setTab}
+                onAskAI={coil => { setInitialPrompt(`¿Tienen la bobina de ${coil.name}?`); setTab('simulator'); }}
+                onEdit={c => setEditCoil(c)}
+              />
+            )}
+            {tab === 'simulator' && (
+              <SimulatorView initialPrompt={initialPrompt} onTriggerSale={c => { setTab('sales'); }} />
+            )}
+            {tab === 'sales' && <SalesView onOpenManualSale={() => setTab('catalog')} />}
+            {tab === 'database' && (
+              <DatabaseView
+                onOpenCreate={() => setCreateModal(true)}
+                onOpenEdit={c => setEditCoil(c)}
+                onOpenBulk={() => setBulkModal(true)}
+                onOpenSchema={() => {}}
+              />
+            )}
+            {tab === 'admin' && <AdminConfigView />}
+          </main>
+
+          <footer className="bg-slate-950 border-t border-slate-800 py-6 text-center text-xs text-slate-500">
+            Bobinas Express &copy; {new Date().getFullYear()} •{' '}
+            <a
+              href="https://wa.me/584126497478"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-emerald-400 hover:text-emerald-300 font-semibold underline"
+            >
+              WhatsApp
+            </a>{' '}
+            • Desarrollado con React 18 Modular
+          </footer>
+
+          <CartDrawer />
+          <AuthModal />
+
+          {/* Modal Edición / Creación Rápida */}
+          {(createModal || editCoil) && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
+              <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-md w-full space-y-3">
+                <h3 className="text-sm font-bold text-white">{editCoil ? `Editar ${editCoil.id}` : 'Nueva Bobina'}</h3>
+                <input id="editName" defaultValue={editCoil?.name || ''} placeholder="Nombre de la bobina" className="w-full p-2 bg-slate-800 border border-slate-700 rounded text-xs text-white" />
+                <input id="editBrand" defaultValue={editCoil?.brand || 'Chevrolet'} placeholder="Marca" className="w-full p-2 bg-slate-800 border border-slate-700 rounded text-xs text-white" />
+                <input id="editModel" defaultValue={editCoil?.carModel || ''} placeholder="Modelos compatibles" className="w-full p-2 bg-slate-800 border border-slate-700 rounded text-xs text-white" />
+                <input id="editOem" defaultValue={editCoil?.oem || ''} placeholder="Código OEM" className="w-full p-2 bg-slate-800 border border-slate-700 rounded text-xs text-white" />
+                <div className="grid grid-cols-2 gap-2">
+                  <input id="editPrice" type="number" step="0.01" defaultValue={editCoil?.price || 25} placeholder="Precio USD" className="w-full p-2 bg-slate-800 border border-slate-700 rounded text-xs text-white" />
+                  <input id="editStock" type="number" defaultValue={editCoil?.stock || 10} placeholder="Stock" className="w-full p-2 bg-slate-800 border border-slate-700 rounded text-xs text-white" />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button onClick={() => { setEditCoil(null); setCreateModal(false); }} className="px-3 py-1.5 bg-slate-800 text-slate-300 rounded text-xs">Cancelar</button>
+                  <button onClick={() => {
+                    upsertCoil({
+                      id: editCoil?.id || `BOB-${Math.floor(100 + Math.random()*900)}`,
+                      name: document.getElementById('editName').value,
+                      brand: document.getElementById('editBrand').value,
+                      carModel: document.getElementById('editModel').value,
+                      oem: document.getElementById('editOem').value,
+                      price: parseFloat(document.getElementById('editPrice').value) || 25,
+                      stock: parseInt(document.getElementById('editStock').value, 10) || 0
+                    });
+                    setEditCoil(null); setCreateModal(false);
+                  }} className="px-4 py-1.5 bg-brand-500 text-white font-bold rounded text-xs">Guardar</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal Carga Masiva */}
+          {bulkModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
+              <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-lg w-full space-y-3">
+                <h3 className="text-sm font-bold text-white">Carga Masiva (CSV / JSON)</h3>
+                <textarea rows={8} value={bulkText} onChange={e => setBulkText(e.target.value)} placeholder="Pega aquí tu CSV o JSON..." className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded text-xs text-white font-mono" />
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setBulkModal(false)} className="px-3 py-1.5 bg-slate-800 text-slate-300 rounded text-xs">Cancelar</button>
+                  <button onClick={() => {
+                    try {
+                      let recs = [];
+                      if (bulkText.trim().startsWith('[') || bulkText.trim().startsWith('{')) recs = JSON.parse(bulkText);
+                      else recs = parseCSV(bulkText);
+                      bulkImport(recs, false);
+                      setBulkModal(false);
+                    } catch(e) { alert('Error: ' + e.message); }
+                  }} className="px-4 py-1.5 bg-sky-600 text-white font-bold rounded text-xs">Importar</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(
+      <ToastProvider>
+        <AuthProvider>
+          <InventoryProvider>
+            <CartProvider>
+              <App />
+            </CartProvider>
+          </InventoryProvider>
+        </AuthProvider>
+      </ToastProvider>
+    );
+  </script>
+</body>
+</html>
