@@ -122,12 +122,22 @@ Directrices de conversación:
   }, [showToast]);
 
   const deleteCoil = useCallback((id) => {
-    setCoils(prev => prev.filter(b => b.id !== id));
+    const target = String(id || '').trim().toLowerCase();
+    setCoils(prev => {
+      const next = prev.filter(b => String(b.id || '').trim().toLowerCase() !== target);
+      try {
+        localStorage.setItem(STORAGE_KEY_INVENTORY, JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
     showToast(`Bobina ${id} eliminada`);
   }, [showToast]);
 
   const clearInventory = useCallback(() => {
     setCoils([]);
+    try {
+      localStorage.setItem(STORAGE_KEY_INVENTORY, JSON.stringify([]));
+    } catch (e) {}
     showToast('Base de datos vaciada por completo (0 artículos).');
   }, [showToast]);
 

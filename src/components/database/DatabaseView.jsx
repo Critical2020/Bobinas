@@ -33,29 +33,24 @@ export function DatabaseView({
     }
   };
 
-  const handleDeleteWithAuth = (id) => {
-    requireAdminAuth(
-      () => deleteCoil(id),
-      'Eliminar productos de la Base de Datos requiere autorización de Administrador.'
-    );
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  const handleDelete = (id) => {
+    deleteCoil(id);
   };
 
-  const handleClearWithAuth = () => {
-    requireAdminAuth(
-      () => {
-        if (window.confirm('¿Confirmas que deseas vaciar todos los artículos de la Base de Datos? La base quedará en 0 productos.')) {
-          clearInventory();
-        }
-      },
-      'Vaciar la Base de Datos requiere autorización de Administrador.'
-    );
+  const handleClearClick = () => {
+    if (!confirmClear) {
+      setConfirmClear(true);
+      setTimeout(() => setConfirmClear(false), 4000);
+      return;
+    }
+    clearInventory();
+    setConfirmClear(false);
   };
 
-  const handleRestoreWithAuth = () => {
-    requireAdminAuth(
-      () => restoreSeedData(),
-      'Restaurar la Base de Datos al estado original requiere sesión de Administrador.'
-    );
+  const handleRestore = () => {
+    restoreSeedData();
   };
 
   return (
@@ -122,16 +117,20 @@ export function DatabaseView({
           </button>
 
           <button 
-            onClick={handleClearWithAuth}
-            className="px-3 py-2 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/50 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+            onClick={handleClearClick}
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+              confirmClear 
+                ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/40 ring-2 ring-rose-400' 
+                : 'bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/50'
+            }`}
             title="Borrar todos los productos de la Base de Datos (0 artículos)"
           >
-            <i className="fa-solid fa-trash-can"></i>
-            <span className="hidden sm:inline">Vaciar Base de Datos</span>
+            <i className={`fa-solid ${confirmClear ? 'fa-triangle-exclamation' : 'fa-trash-can'}`}></i>
+            <span>{confirmClear ? '¿Confirmar vaciado total? Clic aquí' : 'Vaciar Base de Datos'}</span>
           </button>
 
           <button 
-            onClick={handleRestoreWithAuth}
+            onClick={handleRestore}
             className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-amber-300 border border-slate-800 rounded-xl text-xs transition flex items-center gap-1.5 cursor-pointer"
             title="Restaurar a los productos originales de fábrica"
           >
@@ -181,7 +180,7 @@ export function DatabaseView({
       {/* Main Inventory Table */}
       <InventoryTable 
         onEditCoil={onOpenEditModal}
-        onDeleteCoil={handleDeleteWithAuth}
+        onDeleteCoil={handleDelete}
       />
     </div>
   );

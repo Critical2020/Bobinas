@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 
 export function ProductModal({ isOpen, onClose, initialProduct }) {
-  const { upsertCoil } = useInventory();
+  const { upsertCoil, deleteCoil } = useInventory();
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const isEditing = Boolean(initialProduct && initialProduct.id);
 
@@ -267,20 +268,45 @@ export function ProductModal({ isOpen, onClose, initialProduct }) {
             </div>
           </div>
 
-          <div className="pt-3 flex justify-end gap-2 border-t border-slate-800">
-            <button 
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-semibold hover:bg-slate-700"
-            >
-              Cancelar
-            </button>
-            <button 
-              type="submit"
-              className="px-5 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-brand-500/20"
-            >
-              {isEditing ? 'Guardar Cambios' : 'Insertar en Base de Datos'}
-            </button>
+          <div className="pt-3 flex items-center justify-between gap-2 border-t border-slate-800">
+            {isEditing ? (
+              <button 
+                type="button"
+                onClick={() => {
+                  if (!confirmDelete) {
+                    setConfirmDelete(true);
+                    setTimeout(() => setConfirmDelete(false), 3500);
+                    return;
+                  }
+                  deleteCoil(form.id);
+                  onClose();
+                }}
+                className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+                  confirmDelete 
+                    ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/40 ring-2 ring-rose-400' 
+                    : 'bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 border border-rose-500/30'
+                }`}
+              >
+                <i className={`fa-solid ${confirmDelete ? 'fa-triangle-exclamation' : 'fa-trash-can'}`}></i>
+                <span>{confirmDelete ? '¿Confirmar eliminar?' : 'Eliminar Bobina'}</span>
+              </button>
+            ) : <div></div>}
+
+            <div className="flex items-center gap-2">
+              <button 
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-semibold hover:bg-slate-700 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button 
+                type="submit"
+                className="px-5 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-brand-500/20 cursor-pointer"
+              >
+                {isEditing ? 'Guardar Cambios' : 'Insertar en Base de Datos'}
+              </button>
+            </div>
           </div>
         </form>
       </div>
