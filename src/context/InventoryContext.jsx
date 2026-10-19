@@ -19,9 +19,9 @@ export function InventoryProvider({ children }) {
   const [coils, setCoils] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_INVENTORY);
-      if (saved) {
+      if (saved !== null) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed.map(normalizeCoilRecord);
         }
       }
@@ -124,6 +124,11 @@ Directrices de conversación:
   const deleteCoil = useCallback((id) => {
     setCoils(prev => prev.filter(b => b.id !== id));
     showToast(`Bobina ${id} eliminada`);
+  }, [showToast]);
+
+  const clearInventory = useCallback(() => {
+    setCoils([]);
+    showToast('Base de datos vaciada por completo (0 artículos).');
   }, [showToast]);
 
   const restoreSeedData = useCallback(() => {
@@ -251,6 +256,7 @@ Directrices de conversación:
       changeDbEngine,
       upsertCoil,
       deleteCoil,
+      clearInventory,
       restoreSeedData,
       bulkImport,
       salesHistory,

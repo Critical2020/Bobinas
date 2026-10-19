@@ -10,7 +10,7 @@ export function DatabaseView({
   onOpenBulkModal,
   onOpenSchemaModal
 }) {
-  const { coils, dbEngine, changeDbEngine, deleteCoil, restoreSeedData } = useInventory();
+  const { coils, dbEngine, changeDbEngine, deleteCoil, clearInventory, restoreSeedData } = useInventory();
   const { requireAdminAuth } = useAuth();
 
   const engines = [
@@ -37,6 +37,17 @@ export function DatabaseView({
     requireAdminAuth(
       () => deleteCoil(id),
       'Eliminar productos de la Base de Datos requiere autorización de Administrador.'
+    );
+  };
+
+  const handleClearWithAuth = () => {
+    requireAdminAuth(
+      () => {
+        if (window.confirm('¿Confirmas que deseas vaciar todos los artículos de la Base de Datos? La base quedará en 0 productos.')) {
+          clearInventory();
+        }
+      },
+      'Vaciar la Base de Datos requiere autorización de Administrador.'
     );
   };
 
@@ -111,11 +122,21 @@ export function DatabaseView({
           </button>
 
           <button 
+            onClick={handleClearWithAuth}
+            className="px-3 py-2 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/50 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+            title="Borrar todos los productos de la Base de Datos (0 artículos)"
+          >
+            <i className="fa-solid fa-trash-can"></i>
+            <span className="hidden sm:inline">Vaciar Base de Datos</span>
+          </button>
+
+          <button 
             onClick={handleRestoreWithAuth}
-            className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-rose-400 border border-slate-800 rounded-xl text-xs transition cursor-pointer"
+            className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-amber-300 border border-slate-800 rounded-xl text-xs transition flex items-center gap-1.5 cursor-pointer"
             title="Restaurar a los productos originales de fábrica"
           >
             <i className="fa-solid fa-rotate-left"></i>
+            <span className="hidden sm:inline">Restaurar Semilla</span>
           </button>
         </div>
       </div>

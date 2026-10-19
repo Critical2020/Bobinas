@@ -131,7 +131,27 @@ export function CatalogView({ onNavigateTab, onAskAIAboutCoil, onEditCoil }) {
       </div>
 
       {/* Grid of Products */}
-      {filteredCoils.length > 0 ? (
+      {coils.length === 0 ? (
+        <div className="bg-slate-800/50 border border-slate-700/60 rounded-2xl p-12 text-center max-w-lg mx-auto space-y-4">
+          <div className="h-16 w-16 bg-slate-700/50 rounded-full flex items-center justify-center mx-auto text-slate-400 text-2xl">
+            <i className="fa-solid fa-box-open"></i>
+          </div>
+          <h3 className="text-lg font-bold text-white">Inventario vacío (0 bobinas)</h3>
+          <p className="text-xs text-slate-400">
+            Has vaciado los artículos de la Base de Datos. Puedes ingresar nuevas bobinas desde la sección de Base de Datos o restaurar las referencias de fábrica.
+          </p>
+          {isAdmin && (
+            <div className="flex justify-center gap-2 pt-2">
+              <button 
+                onClick={() => onNavigateTab('database')}
+                className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-xl text-xs font-semibold transition cursor-pointer"
+              >
+                <i className="fa-solid fa-database mr-1.5"></i> Gestionar Base de Datos
+              </button>
+            </div>
+          )}
+        </div>
+      ) : filteredCoils.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
           {filteredCoils.map(coil => (
             <CoilCard
@@ -153,7 +173,7 @@ export function CatalogView({ onNavigateTab, onAskAIAboutCoil, onEditCoil }) {
           </p>
           <button 
             onClick={() => { setSearchQuery(''); setSelectedBrand('ALL'); setStockFilter('ALL'); }}
-            className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-semibold transition"
+            className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-semibold transition cursor-pointer"
           >
             Limpiar Filtros
           </button>

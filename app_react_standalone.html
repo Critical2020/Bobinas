@@ -284,7 +284,7 @@
       const [coils, setCoils] = useState(() => {
         try {
           const s = localStorage.getItem('AUTOIGNITION_DB_INVENTORY_V2');
-          if (s) { const p = JSON.parse(s); if (Array.isArray(p) && p.length > 0) return p.map(normalizeCoilRecord); }
+          if (s !== null) { const p = JSON.parse(s); if (Array.isArray(p)) return p.map(normalizeCoilRecord); }
         } catch (e) {}
         return DEFAULT_BOBINAS_SEED.map(normalizeCoilRecord);
       });
@@ -323,6 +323,7 @@
         showToast(`Bobina ${item.id} guardada`);
       };
       const deleteCoil = (id) => { setCoils(prev => prev.filter(b => b.id !== id)); showToast(`Bobina ${id} eliminada`); };
+      const clearInventory = () => { setCoils([]); showToast('Base de datos vaciada por completo (0 artículos)'); };
       const restoreSeedData = () => { const fresh = DEFAULT_BOBINAS_SEED.map(normalizeCoilRecord); setCoils(fresh); showToast('Inventario restaurado'); };
       const bulkImport = (records, replaceAll) => {
         const norm = records.map(normalizeCoilRecord);
@@ -390,7 +391,7 @@
       };
 
       return (
-        <InventoryContext.Provider value={{ coils, dbEngine, changeDbEngine, upsertCoil, deleteCoil, restoreSeedData, bulkImport, salesHistory, ownerSettings, updateOwnerSettings, processSaleTransaction, revertSale, pendingOwnerAlert, dismissOwnerAlert: () => setPendingOwnerAlert(null) }}>
+        <InventoryContext.Provider value={{ coils, dbEngine, changeDbEngine, upsertCoil, deleteCoil, clearInventory, restoreSeedData, bulkImport, salesHistory, ownerSettings, updateOwnerSettings, processSaleTransaction, revertSale, pendingOwnerAlert, dismissOwnerAlert: () => setPendingOwnerAlert(null) }}>
           {children}
         </InventoryContext.Provider>
       );
@@ -982,7 +983,7 @@
     }
 
     function DatabaseView({ onOpenCreate, onOpenEdit, onOpenBulk, onOpenSchema }) {
-      const { coils, dbEngine, changeDbEngine, deleteCoil, restoreSeedData } = useInventory();
+      const { coils, dbEngine, changeDbEngine, deleteCoil, clearInventory, restoreSeedData } = useInventory();
       const { requireAdminAuth } = useAuth();
       return (
         <div className="space-y-6">
@@ -1004,6 +1005,12 @@
               <button onClick={onOpenSchema} className="px-3.5 py-2 bg-slate-800 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
                 <i className="fa-solid fa-code text-purple-400"></i> Esquemas DDL
               </button>
+              <button onClick={() => requireAdminAuth(() => { if (confirm('¿Vaciar la base de datos a 0 productos?')) clearInventory(); }, 'Vaciar DB requiere sesión Admin')} className="px-3.5 py-2 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/50 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
+                <i className="fa-solid fa-trash-can"></i> Vaciar Base
+              </button>
+              <button onClick={() => requireAdminAuth(() => restoreSeedData(), 'Restaurar requiere sesión Admin')} className="px-3.5 py-2 bg-slate-800 text-slate-300 border border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
+                <i className="fa-solid fa-rotate-left"></i> Restaurar Semilla
+              </button>
             </div>
           </div>
 
@@ -1022,20 +1029,28 @@
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
-                  {coils.map(b => (
-                    <tr key={b.id} className="hover:bg-slate-800/50">
-                      <td className="py-3 px-4 font-mono font-bold text-sky-400">{b.id}</td>
-                      <td className="py-3 px-4 text-white font-medium">{b.name}</td>
-                      <td className="py-3 px-4 text-slate-300">{b.carModel}</td>
-                      <td className="py-3 px-4 font-mono text-slate-400">{b.oem}</td>
-                      <td className="py-3 px-4 text-brand-400 font-bold">{formatUSD(b.price)}</td>
-                      <td className="py-3 px-4 text-center"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${b.stock > 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>{b.stock} uds</span></td>
-                      <td className="py-3 px-4 text-right space-x-2">
-                        <button onClick={() => requireAdminAuth(() => onEdit(b))} className="text-sky-400 p-1"><i className="fa-solid fa-pen-to-square"></i></button>
-                        <button onClick={() => requireAdminAuth(() => deleteCoil(b.id))} className="text-rose-400 p-1"><i className="fa-solid fa-trash-can"></i></button>
+                  {coils.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" className="py-8 text-center text-slate-500">
+                        La base de datos está vacía (0 artículos). Inserta nuevas bobinas o pulsa "Restaurar Semilla".
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    coils.map(b => (
+                      <tr key={b.id} className="hover:bg-slate-800/50">
+                        <td className="py-3 px-4 font-mono font-bold text-sky-400">{b.id}</td>
+                        <td className="py-3 px-4 text-white font-medium">{b.name}</td>
+                        <td className="py-3 px-4 text-slate-300">{b.carModel}</td>
+                        <td className="py-3 px-4 font-mono text-slate-400">{b.oem}</td>
+                        <td className="py-3 px-4 text-brand-400 font-bold">{formatUSD(b.price)}</td>
+                        <td className="py-3 px-4 text-center"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${b.stock > 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>{b.stock} uds</span></td>
+                        <td className="py-3 px-4 text-right space-x-2">
+                          <button onClick={() => requireAdminAuth(() => onEdit(b))} className="text-sky-400 p-1"><i className="fa-solid fa-pen-to-square"></i></button>
+                          <button onClick={() => requireAdminAuth(() => deleteCoil(b.id))} className="text-rose-400 p-1"><i className="fa-solid fa-trash-can"></i></button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
