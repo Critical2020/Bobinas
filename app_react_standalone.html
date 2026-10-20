@@ -88,6 +88,27 @@
     ];
 
     const OFFICIAL_WA_RAW = '04126497478';
+    const SYNC_CHANNEL_NAME = 'bobinas_express_sync_v2';
+
+    const broadcastSync = (items) => {
+      if (typeof BroadcastChannel !== 'undefined') {
+        try {
+          const channel = new BroadcastChannel(SYNC_CHANNEL_NAME);
+          channel.postMessage({ type: 'SYNC_INVENTORY', coils: items });
+          channel.close();
+        } catch (e) {}
+      }
+    };
+
+    const pushToApi = (items) => {
+      try {
+        fetch('/api/inventory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ coils: items })
+        }).catch(() => {});
+      } catch (e) {}
+    };
 
     // --- UTILITIES ---
     function formatUSD(amt) { return `$${Number(amt || 0).toFixed(2)}`; }
@@ -413,14 +434,67 @@
       useEffect(() => { localStorage.setItem('AUTOIGNITION_DB_ENGINE_V2', dbEngine); }, [dbEngine]);
       useEffect(() => { localStorage.setItem('AUTOIGNITION_OWNER_PREFS_V2', JSON.stringify(ownerSettings)); }, [ownerSettings]);
 
+      // 1. Initial Cloud Sync from /api/inventory on mount (across devices & restarts)
+      useEffect(() => {
+        let isMounted = true;
+        fetch('/api/inventory')
+          .then(r => r.ok ? r.json() : null)
+          .then(data => {
+            if (!isMounted) return;
+            if (data && Array.isArray(data.coils)) {
+              setCoils(data.coils.map(normalizeCoilRecord));
+              try {
+                localStorage.setItem('AUTOIGNITION_DB_INVENTORY_V2', JSON.stringify(data.coils));
+              } catch (e) {}
+            } else {
+              pushToApi(coils);
+            }
+          })
+          .catch(() => {});
+        return () => { isMounted = false; };
+      }, []);
+
+      // 2. Real-time Multi-Tab Broadcast Sync
+      useEffect(() => {
+        if (typeof BroadcastChannel !== 'undefined') {
+          const channel = new BroadcastChannel(SYNC_CHANNEL_NAME);
+          channel.onmessage = (event) => {
+            if (event.data && event.data.type === 'SYNC_INVENTORY' && Array.isArray(event.data.coils)) {
+              setCoils(event.data.coils.map(normalizeCoilRecord));
+            }
+          };
+          return () => channel.close();
+        }
+      }, []);
+
+      // 3. Storage event listener (Cross-tab sync fallback)
+      useEffect(() => {
+        const handleStorage = (e) => {
+          if (e.key === 'AUTOIGNITION_DB_INVENTORY_V2' && e.newValue) {
+            try {
+              const parsed = JSON.parse(e.newValue);
+              if (Array.isArray(parsed)) {
+                setCoils(parsed.map(normalizeCoilRecord));
+              }
+            } catch (err) {}
+          }
+        };
+        window.addEventListener('storage', handleStorage);
+        return () => window.removeEventListener('storage', handleStorage);
+      }, []);
+
       const changeDbEngine = (eng) => { setDbEngine(eng); showToast(`Motor cambiado a: ${eng.toUpperCase()}`); };
       const updateOwnerSettings = (newSettings) => { setOwnerSettings(prev => ({ ...prev, ...newSettings })); showToast('Configuración guardada'); };
       const upsertCoil = (raw) => {
         const item = normalizeCoilRecord(raw);
         setCoils(prev => {
           const idx = prev.findIndex(b => b.id.toLowerCase() === item.id.toLowerCase());
-          if (idx >= 0) { const next = [...prev]; next[idx] = item; return next; }
-          return [item, ...prev];
+          let next;
+          if (idx >= 0) { next = [...prev]; next[idx] = item; }
+          else { next = [item, ...prev]; }
+          broadcastSync(next);
+          pushToApi(next);
+          return next;
         });
         showToast(`Bobina ${item.id} guardada`);
       };
@@ -429,6 +503,8 @@
         setCoils(prev => {
           const next = prev.filter(b => String(b.id || '').trim().toLowerCase() !== target);
           try { localStorage.setItem('AUTOIGNITION_DB_INVENTORY_V2', JSON.stringify(next)); } catch(e) {}
+          broadcastSync(next);
+          pushToApi(next);
           return next;
         });
         showToast(`Bobina ${id} eliminada`);
@@ -436,17 +512,32 @@
       const clearInventory = () => {
         setCoils([]);
         try { localStorage.setItem('AUTOIGNITION_DB_INVENTORY_V2', JSON.stringify([])); } catch(e) {}
+        broadcastSync([]);
+        pushToApi([]);
         showToast('Base de datos vaciada por completo (0 artículos)');
       };
-      const restoreSeedData = () => { const fresh = DEFAULT_BOBINAS_SEED.map(normalizeCoilRecord); setCoils(fresh); showToast('Inventario restaurado'); };
+      const restoreSeedData = () => { 
+        const fresh = DEFAULT_BOBINAS_SEED.map(normalizeCoilRecord); 
+        setCoils(fresh); 
+        broadcastSync(fresh);
+        pushToApi(fresh);
+        showToast('Inventario restaurado'); 
+      };
       const bulkImport = (records, replaceAll) => {
         const norm = records.map(normalizeCoilRecord);
         setCoils(prev => {
-          if (replaceAll) return norm;
-          const map = new Map();
-          prev.forEach(i => map.set(i.id.toLowerCase(), i));
-          norm.forEach(i => map.set(i.id.toLowerCase(), i));
-          return Array.from(map.values());
+          let next;
+          if (replaceAll) {
+            next = norm;
+          } else {
+            const map = new Map();
+            prev.forEach(i => map.set(i.id.toLowerCase(), i));
+            norm.forEach(i => map.set(i.id.toLowerCase(), i));
+            next = Array.from(map.values());
+          }
+          broadcastSync(next);
+          pushToApi(next);
+          return next;
         });
         showToast(`Carga masiva: ${norm.length} productos procesados.`);
       };
@@ -491,7 +582,10 @@
             } catch(e) {}
           }
 
-          return currentCoils.map(item => item.id === coil.id ? { ...item, stock: stockAfter, inStock: stockAfter > 0 } : item);
+          const nextCoils = currentCoils.map(item => item.id === coil.id ? { ...item, stock: stockAfter, inStock: stockAfter > 0 } : item);
+          broadcastSync(nextCoils);
+          pushToApi(nextCoils);
+          return nextCoils;
         });
         return orderResult;
       };
@@ -499,7 +593,12 @@
       const revertSale = (orderId) => {
         const ord = salesHistory.find(s => s.orderId === orderId);
         if (!ord) return;
-        setCoils(currentCoils => currentCoils.map(item => item.id === ord.coilId ? { ...item, stock: item.stock + ord.qty, inStock: true } : item));
+        setCoils(currentCoils => {
+          const nextCoils = currentCoils.map(item => item.id === ord.coilId ? { ...item, stock: item.stock + ord.qty, inStock: true } : item);
+          broadcastSync(nextCoils);
+          pushToApi(nextCoils);
+          return nextCoils;
+        });
         setSalesHistory(prev => prev.map(s => s.orderId === orderId ? { ...s, status: 'REVERTED' } : s));
         showToast(`Venta #${orderId} revertida (+${ord.qty} unidades al stock)`);
       };
@@ -916,12 +1015,19 @@
 
     function SimulatorView({ initialPrompt, onTriggerSale }) {
       const { coils, dbEngine, ownerSettings, processSaleTransaction } = useInventory();
-      const { deviceId } = useAuth();
+      const { deviceId, isAdmin } = useAuth();
       const [input, setInput] = useState('');
       const [isTyping, setIsTyping] = useState(false);
+      const [showAdminConsole, setShowAdminConsole] = useState(true);
       const [logs, setLogs] = useState([]);
       const [messages, setMessages] = useState(() => [
-        { id: '1', sender: 'bot', html: `¡Hola! 👋 Soy el <strong>Asesor Virtual Inteligente de Bobinas Express</strong>.<br><br>Estoy conectado a <strong>${getEngineLabel(dbEngine)}</strong> con <strong>${coils.length} bobinas</strong> registradas. ¿Qué modelo o código OEM necesitas?`, badge: `Conectado a ${getEngineLabel(dbEngine)}`, time: 'Ahora' }
+        { 
+          id: '1', 
+          sender: 'bot', 
+          html: `¡Hola! 👋 Soy el <strong>Asesor Virtual Inteligente de Bobinas Express</strong>.<br><br>Escríbeme la marca, modelo de auto, año o código OEM que necesitas y confirmaré existencias y precios al instante.`, 
+          badge: `Conectado a ${getEngineLabel(dbEngine)} (${coils.length} bobinas)`, 
+          time: 'Ahora' 
+        }
       ]);
       const endRef = useRef(null);
 
@@ -953,13 +1059,16 @@
           const isBuy = clean.includes('comprar') || clean.includes('pago') || clean.includes('ref') || clean.includes('confirmo');
           let botHtml = '';
           let product = null;
+          let badge = '';
 
           if (isBuy && bestMatch && bestMatch.stock > 0) {
             const ord = processSaleTransaction({ coilId: bestMatch.id, qty: 1, customerName: 'Cliente Chat WA', customerPhone: 'WhatsApp', paymentRef: text, userId: deviceId });
-            botHtml = `🎉 <strong>¡VENTA CONFIRMADA! (#${ord.orderId})</strong><br><br>Descontamos 1x <strong>${bestMatch.name}</strong> del inventario:<br>• <strong>Total:</strong> <span class="text-emerald-400 font-bold">${formatUSD(bestMatch.price)} USD</span><br>• <strong>Nuevo Stock DB:</strong> ${ord.stockBefore} ➔ <strong>${ord.stockAfter} uds</strong><br><br>📲 <em>Alerta enviada al dueño al ${ownerSettings.ownerPhone}.</em>`;
+            badge = `[TX COMMIT ${getEngineLabel(dbEngine)}] Orden #${ord.orderId}`;
+            botHtml = `🎉 <strong>¡VENTA CONFIRMADA! (#${ord.orderId})</strong><br><br>Descontamos 1x <strong>${bestMatch.name}</strong> del inventario:<br>• <strong>Total:</strong> <span class="text-emerald-400 font-bold">${formatUSD(bestMatch.price)} USD</span><br>${isAdmin ? `• <strong>Nuevo Stock DB:</strong> ${ord.stockBefore} ➔ <strong>${ord.stockAfter} uds</strong><br><br>` : `• <strong>Estado del Pedido:</strong> <span class="text-emerald-400 font-bold">Aprobado y en preparación para despacho</span><br><br>`}📲 <em>Alerta enviada al dueño al ${ownerSettings.ownerPhone}.</em>`;
             setLogs(prev => [{ id: Math.random().toString(), time, query: `TX COMMIT: #${ord.orderId} [${bestMatch.id}]`, count: 1, engine: getEngineLabel(dbEngine), latency: 25 }, ...prev]);
           } else if (bestMatch && maxScore > 0) {
             product = bestMatch;
+            badge = `[${getEngineLabel(dbEngine)}] ID: ${bestMatch.id} | Stock: ${bestMatch.stock}`;
             if (bestMatch.stock > 0) {
               botHtml = `✅ ¡Sí, disponible en stock inmediato!<br><br>• <strong>${bestMatch.name}</strong><br>• <strong>Aplicación:</strong> ${bestMatch.carModel}<br>• <strong>Precio:</strong> <span class="text-brand-400 font-bold">${formatUSD(bestMatch.price)} USD</span><br>• <strong>Stock:</strong> <span class="text-emerald-400 font-bold">${bestMatch.stock} unidades</span><br>• <strong>OEM:</strong> <code>${bestMatch.oem}</code><br><br>Escribe <code>"Quiero comprar ref 12345"</code> o usa el botón abajo para cerrar tu compra.`;
             } else {
@@ -967,17 +1076,32 @@
             }
             setLogs(prev => [{ id: Math.random().toString(), time, query: `SELECT * WHERE id='${bestMatch.id}'`, count: 1, engine: getEngineLabel(dbEngine), latency: 32 }, ...prev]);
           } else {
-            botHtml = `Consulté la base de datos para <em>"${text}"</em> y no encontré un registro exacto. Escríbeme la marca, modelo de auto o código OEM para verificar.`;
+            badge = `[${getEngineLabel(dbEngine)}] 0 registros`;
+            botHtml = isAdmin
+              ? `Consulté la base de datos para <em>"${text}"</em> y no encontré un registro exacto.<br><br>💡 <em>Tip de Administrador: Puedes agregarla desde el panel de <strong>"Base de Datos & Stock"</strong>.</em>`
+              : `No encontramos una coincidencia exacta en catálogo para <em>"${text}"</em>.<br><br>💡 Por favor verifica el año, modelo o código OEM, o escríbenos directamente por WhatsApp.`;
             setLogs(prev => [{ id: Math.random().toString(), time, query: `SELECT * WHERE name LIKE '%${tokens.join(' ')}%'`, count: 0, engine: getEngineLabel(dbEngine), latency: 18 }, ...prev]);
           }
 
-          setMessages(prev => [...prev, { id: Math.random().toString(), sender: 'bot', html: botHtml, product, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+          setMessages(prev => [...prev, { id: Math.random().toString(), sender: 'bot', html: botHtml, badge, product, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
         }, 500);
       };
 
+      const handleResetChat = () => {
+        setMessages([
+          { 
+            id: Math.random().toString(), 
+            sender: 'bot', 
+            html: `¡Hola! 👋 Historial reiniciado. Estoy listo para ayudarte. ¿Qué modelo o código OEM deseas consultar?`, 
+            badge: `Conectado a ${getEngineLabel(dbEngine)} (${coils.length} bobinas)`, 
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+          }
+        ]);
+      };
+
       return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-slate-900 border border-slate-700/80 rounded-2xl flex flex-col h-[580px] overflow-hidden shadow-2xl relative">
+        <div className={isAdmin && showAdminConsole ? "grid grid-cols-1 lg:grid-cols-3 gap-6" : "max-w-3xl mx-auto w-full"}>
+          <div className={`${isAdmin && showAdminConsole ? "lg:col-span-2" : "w-full"} bg-slate-900 border border-slate-700/80 rounded-2xl flex flex-col h-[580px] overflow-hidden shadow-2xl relative`}>
             <div className="bg-[#075e54] text-white p-3.5 flex items-center justify-between shadow">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-full bg-slate-900 border-2 border-emerald-400 flex items-center justify-center font-bold text-brand-500">
@@ -987,6 +1111,30 @@
                   <div className="font-bold text-sm">Bobinas Express AI <i className="fa-solid fa-circle-check text-sky-300 text-xs"></i></div>
                   <p className="text-[10px] text-emerald-200">Oficial {ownerSettings.ownerPhone} • En línea</p>
                 </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {isAdmin && (
+                  <button 
+                    onClick={() => setShowAdminConsole(!showAdminConsole)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer border ${
+                      showAdminConsole 
+                        ? 'bg-sky-500/20 text-sky-300 border-sky-500/40 shadow-xs' 
+                        : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                    }`}
+                    title="Mostrar/Ocultar Consola de Queries SQL para Administrador"
+                  >
+                    <i className="fa-solid fa-terminal text-[10px]"></i>
+                    <span className="hidden sm:inline">{showAdminConsole ? 'Ocultar Consola' : 'Ver Consola SQL'}</span>
+                  </button>
+                )}
+                <button 
+                  onClick={handleResetChat}
+                  className="p-2 text-emerald-200 hover:text-white hover:bg-emerald-700/50 rounded-lg text-xs transition cursor-pointer"
+                  title="Reiniciar conversación"
+                >
+                  <i className="fa-solid fa-rotate-right"></i>
+                </button>
               </div>
             </div>
 
@@ -1001,6 +1149,11 @@
                   ) : (
                     <div className="relative bg-[#202c33] text-[#e9edef] rounded-lg rounded-tl-none p-3 shadow max-w-[85%] chat-bubble-tail-in text-xs sm:text-sm">
                       <div className="font-semibold text-brand-400 text-[10px] uppercase mb-1"><i className="fa-solid fa-microchip"></i> Asesor Bobinas Express AI</div>
+                      {isAdmin && m.badge && (
+                        <div className="mb-2 px-2 py-0.5 bg-slate-800 rounded text-[9px] font-mono text-sky-400 border border-slate-700">
+                          <i className="fa-solid fa-database mr-1"></i>{m.badge}
+                        </div>
+                      )}
                       <div dangerouslySetInnerHTML={{ __html: m.html }} />
                       {m.product && (
                         <div className="mt-3 pt-2.5 border-t border-slate-700/60 flex flex-wrap gap-2">
@@ -1014,7 +1167,7 @@
                   )}
                 </div>
               ))}
-              {isTyping && <div className="text-xs text-gray-400 italic">Consultando base de datos...</div>}
+              {isTyping && <div className="text-xs text-gray-400 italic">Consultando inventario...</div>}
               <div ref={endRef} />
             </div>
 
@@ -1024,22 +1177,30 @@
             </div>
           </div>
 
-          <div className="bg-slate-950 border border-slate-800 rounded-2xl flex flex-col h-[580px] overflow-hidden p-3 font-mono text-[11px]">
-            <div className="font-bold text-white mb-2 pb-2 border-b border-slate-800 flex items-center justify-between">
-              <span><i className="fa-solid fa-terminal text-sky-400"></i> Monitor SQL en Vivo</span>
-              <button onClick={() => setLogs([])} className="text-slate-500 hover:text-white text-[10px]">Limpiar</button>
+          {isAdmin && showAdminConsole && (
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl flex flex-col h-[580px] overflow-hidden p-3 font-mono text-[11px]">
+              <div className="font-bold text-white mb-2 pb-2 border-b border-slate-800 flex items-center justify-between">
+                <span><i className="fa-solid fa-terminal text-sky-400"></i> Monitor SQL en Vivo</span>
+                <button onClick={() => setLogs([])} className="text-slate-500 hover:text-white text-[10px]">Limpiar</button>
+              </div>
+              <div className="flex-1 overflow-y-auto space-y-2">
+                {logs.length === 0 ? (
+                  <div className="text-slate-600 text-center py-10">Esperando queries...</div>
+                ) : (
+                  logs.map(l => (
+                    <div key={l.id} className="p-2 bg-slate-900 rounded border border-slate-800 text-[10px] space-y-0.5">
+                      <div className="text-emerald-400">{l.time} ({l.latency}ms)</div>
+                      <div className="text-sky-300">&gt; {l.query}</div>
+                      <div className="text-slate-400">Resultados: {l.count} filas</div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
-            <div className="flex-1 overflow-y-auto space-y-2">
-              {logs.map(l => (
-                <div key={l.id} className="p-2 bg-slate-900 rounded border border-slate-800 text-[10px] space-y-0.5">
-                  <div className="text-emerald-400">{l.time} ({l.latency}ms)</div>
-                  <div className="text-sky-300">&gt; {l.query}</div>
-                  <div className="text-slate-400">Resultados: {l.count} filas</div>
-                </div>
-              ))}
-            </div>
-          </div>
+          )}
         </div>
+      );
+    }
       );
     }
 

@@ -12,6 +12,27 @@ const STORAGE_KEY_ENGINE = 'AUTOIGNITION_DB_ENGINE_V2';
 const STORAGE_KEY_SALES_LOG = 'AUTOIGNITION_SALES_LOG_V1';
 const STORAGE_KEY_OWNER_PREFS = 'AUTOIGNITION_OWNER_PREFS_V2';
 const STORAGE_KEY_CREDENTIALS = 'AUTOIGNITION_DB_CREDENTIALS_V2';
+const SYNC_CHANNEL_NAME = 'bobinas_express_sync_v2';
+
+const broadcastSync = (items) => {
+  if (typeof BroadcastChannel !== 'undefined') {
+    try {
+      const channel = new BroadcastChannel(SYNC_CHANNEL_NAME);
+      channel.postMessage({ type: 'SYNC_INVENTORY', coils: items });
+      channel.close();
+    } catch (e) {}
+  }
+};
+
+const pushToApi = (items) => {
+  try {
+    fetch('/api/inventory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ coils: items })
+    }).catch(() => {});
+  } catch (e) {}
+};
 
 const DEFAULT_CREDENTIALS = {
   supabase: {
@@ -143,6 +164,55 @@ Directrices de conversación:
     } catch (e) {}
   }, [ownerSettings]);
 
+  // 1. Initial Cloud Sync from /api/inventory on mount (across devices & restarts)
+  useEffect(() => {
+    let isMounted = true;
+    fetch('/api/inventory')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!isMounted) return;
+        if (data && Array.isArray(data.coils)) {
+          setCoils(data.coils.map(normalizeCoilRecord));
+          try {
+            localStorage.setItem(STORAGE_KEY_INVENTORY, JSON.stringify(data.coils));
+          } catch (e) {}
+        } else {
+          pushToApi(coils);
+        }
+      })
+      .catch(() => {});
+    return () => { isMounted = false; };
+  }, []);
+
+  // 2. Real-time Multi-Tab / Multi-Window Broadcast Sync
+  useEffect(() => {
+    if (typeof BroadcastChannel !== 'undefined') {
+      const channel = new BroadcastChannel(SYNC_CHANNEL_NAME);
+      channel.onmessage = (event) => {
+        if (event.data && event.data.type === 'SYNC_INVENTORY' && Array.isArray(event.data.coils)) {
+          setCoils(event.data.coils.map(normalizeCoilRecord));
+        }
+      };
+      return () => channel.close();
+    }
+  }, []);
+
+  // 3. Storage event listener (Cross-tab sync fallback)
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === STORAGE_KEY_INVENTORY && e.newValue !== null) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) {
+            setCoils(parsed.map(normalizeCoilRecord));
+          }
+        } catch (err) {}
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
   const changeDbEngine = useCallback((engine) => {
     setDbEngine(engine);
     showToast(`Conexión con motor de Base de Datos cambiada a: ${engine.toUpperCase()}`);
@@ -157,13 +227,19 @@ Directrices de conversación:
     const coil = normalizeCoilRecord(rawCoil);
     setCoils(prev => {
       const idx = prev.findIndex(b => b.id.toLowerCase() === coil.id.toLowerCase());
+      let next;
       if (idx >= 0) {
-        const next = [...prev];
+        next = [...prev];
         next[idx] = coil;
-        return next;
       } else {
-        return [coil, ...prev];
+        next = [coil, ...prev];
       }
+      try {
+        localStorage.setItem(STORAGE_KEY_INVENTORY, JSON.stringify(next));
+      } catch (e) {}
+      broadcastSync(next);
+      pushToApi(next);
+      return next;
     });
     showToast(`Bobina ${coil.id} guardada en base de datos`);
   }, [showToast]);
@@ -175,6 +251,8 @@ Directrices de conversación:
       try {
         localStorage.setItem(STORAGE_KEY_INVENTORY, JSON.stringify(next));
       } catch (e) {}
+      broadcastSync(next);
+      pushToApi(next);
       return next;
     });
     showToast(`Bobina ${id} eliminada`);
@@ -185,27 +263,42 @@ Directrices de conversación:
     try {
       localStorage.setItem(STORAGE_KEY_INVENTORY, JSON.stringify([]));
     } catch (e) {}
+    broadcastSync([]);
+    pushToApi([]);
     showToast('Base de datos vaciada por completo (0 artículos).');
   }, [showToast]);
 
   const restoreSeedData = useCallback(() => {
     const fresh = DEFAULT_BOBINAS_SEED.map(normalizeCoilRecord);
     setCoils(fresh);
+    try {
+      localStorage.setItem(STORAGE_KEY_INVENTORY, JSON.stringify(fresh));
+    } catch (e) {}
+    broadcastSync(fresh);
+    pushToApi(fresh);
     showToast(`Inventario restaurado a los ${fresh.length} productos originales`);
   }, [showToast]);
 
   const bulkImport = useCallback((records, replaceAll = false) => {
     const normalized = records.map(normalizeCoilRecord);
     setCoils(prev => {
+      let next;
       if (replaceAll) {
-        return normalized;
+        next = normalized;
+      } else {
+        const map = new Map();
+        // Keep existing
+        prev.forEach(item => map.set(item.id.toLowerCase(), item));
+        // Overwrite or append imported
+        normalized.forEach(item => map.set(item.id.toLowerCase(), item));
+        next = Array.from(map.values());
       }
-      const map = new Map();
-      // Keep existing
-      prev.forEach(item => map.set(item.id.toLowerCase(), item));
-      // Overwrite or append imported
-      normalized.forEach(item => map.set(item.id.toLowerCase(), item));
-      return Array.from(map.values());
+      try {
+        localStorage.setItem(STORAGE_KEY_INVENTORY, JSON.stringify(next));
+      } catch (e) {}
+      broadcastSync(next);
+      pushToApi(next);
+      return next;
     });
     showToast(`¡Carga masiva completada! ${normalized.length} productos procesados.`);
   }, [showToast]);
@@ -265,7 +358,7 @@ Directrices de conversación:
       }
 
       // Update coil state with new stock
-      return currentCoils.map(item => {
+      const updated = currentCoils.map(item => {
         if (item.id === coil.id) {
           return {
             ...item,
@@ -275,6 +368,10 @@ Directrices de conversación:
         }
         return item;
       });
+
+      broadcastSync(updated);
+      pushToApi(updated);
+      return updated;
     });
 
     return orderResult;
@@ -285,7 +382,7 @@ Directrices de conversación:
     if (!ord) return;
 
     setCoils(currentCoils => {
-      return currentCoils.map(item => {
+      const updated = currentCoils.map(item => {
         if (item.id === ord.coilId) {
           const restoredStock = item.stock + ord.qty;
           return {
@@ -296,6 +393,9 @@ Directrices de conversación:
         }
         return item;
       });
+      broadcastSync(updated);
+      pushToApi(updated);
+      return updated;
     });
 
     setSalesHistory(prev => prev.map(s => s.orderId === orderId ? { ...s, status: 'REVERTED' } : s));

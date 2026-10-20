@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAIAgent } from '../../hooks/useAIAgent';
 import { useInventory } from '../../context/InventoryContext';
+import { useAuth } from '../../context/AuthContext';
 import { ChatMessage } from './ChatMessage';
 import { ChatQuickPrompts } from './ChatQuickPrompts';
 import { DatabaseConsole } from './DatabaseConsole';
@@ -9,14 +10,17 @@ import { getEngineLabel } from '../../utils/formatters';
 export function SimulatorView({ initialPrompt, onTriggerSaleModal }) {
   const { coils, dbEngine, ownerSettings } = useInventory();
   const { generateResponse, consoleLogs, clearLogs } = useAIAgent();
+  const { isAdmin } = useAuth();
 
   const [inputVal, setInputVal] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [showAdminConsole, setShowAdminConsole] = useState(true);
+
   const [messages, setMessages] = useState(() => [
     {
       id: 'init-msg',
       sender: 'bot',
-      html: `¡Hola! 👋 Soy el <strong>Asesor Virtual Inteligente de Bobinas Express</strong>.<br><br>Estoy conectado en vivo a nuestra base de datos en <strong>${getEngineLabel(dbEngine)}</strong> con <strong>${coils.length} referencias de bobinas</strong> activas.<br><br>Escríbeme la marca, modelo de auto, año o código OEM que necesitas y confirmaré existencias y precios al instante.`,
+      html: `¡Hola! 👋 Soy el <strong>Asesor Virtual Inteligente de Bobinas Express</strong>.<br><br>Escríbeme la marca, modelo de auto, año o código OEM que necesitas y confirmaré existencias y precios al instante.`,
       badge: `Conectado a ${getEngineLabel(dbEngine)} (${coils.length} bobinas)`,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       product: null
@@ -90,9 +94,9 @@ export function SimulatorView({ initialPrompt, onTriggerSaleModal }) {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* WhatsApp Interface (Takes 2 cols on lg) */}
-      <div className="lg:col-span-2 bg-slate-900 border border-slate-700/80 rounded-2xl flex flex-col h-[580px] overflow-hidden shadow-2xl relative">
+    <div className={isAdmin && showAdminConsole ? "grid grid-cols-1 lg:grid-cols-3 gap-6" : "max-w-3xl mx-auto w-full"}>
+      {/* WhatsApp Interface */}
+      <div className={`${isAdmin && showAdminConsole ? "lg:col-span-2" : "w-full"} bg-slate-900 border border-slate-700/80 rounded-2xl flex flex-col h-[580px] overflow-hidden shadow-2xl relative`}>
         {/* WhatsApp Header */}
         <div className="bg-[#075e54] text-white p-3.5 flex items-center justify-between shadow-md z-10">
           <div className="flex items-center gap-3">
@@ -114,9 +118,24 @@ export function SimulatorView({ initialPrompt, onTriggerSaleModal }) {
           </div>
 
           <div className="flex items-center gap-2">
+            {isAdmin && (
+              <button 
+                onClick={() => setShowAdminConsole(!showAdminConsole)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer border ${
+                  showAdminConsole 
+                    ? 'bg-sky-500/20 text-sky-300 border-sky-500/40 shadow-xs' 
+                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                }`}
+                title="Mostrar/Ocultar Consola de Queries SQL para Administrador"
+              >
+                <i className="fa-solid fa-terminal text-[10px]"></i>
+                <span className="hidden sm:inline">{showAdminConsole ? 'Ocultar Consola' : 'Ver Consola SQL'}</span>
+              </button>
+            )}
+
             <button 
               onClick={handleResetChat}
-              className="p-2 text-emerald-200 hover:text-white hover:bg-emerald-700/50 rounded-lg text-xs transition"
+              className="p-2 text-emerald-200 hover:text-white hover:bg-emerald-700/50 rounded-lg text-xs transition cursor-pointer"
               title="Reiniciar conversación"
             >
               <i className="fa-solid fa-rotate-right"></i>
@@ -134,8 +153,12 @@ export function SimulatorView({ initialPrompt, onTriggerSaleModal }) {
         >
           {/* Security notice banner inside chat */}
           <div className="flex justify-center my-1">
-            <div className="bg-[#ffeecd] dark:bg-[#182229] dark:text-[#ffd279] text-[#54656f] text-[10px] px-3 py-1 rounded-lg text-center shadow-xs max-w-xs border border-amber-200/50">
-              <i className="fa-solid fa-database text-[9px] mr-1"></i> Respuestas generadas consultando el stock real de la base de datos.
+            <div className="bg-[#ffeecd] dark:bg-[#182229] dark:text-[#ffd279] text-[#54656f] text-[10px] px-3 py-1 rounded-lg text-center shadow-xs max-w-sm border border-amber-200/50">
+              {isAdmin ? (
+                <span><i className="fa-solid fa-shield text-[9px] mr-1"></i> Modo Administrador activo • Consultas y comandos SQL auditados.</span>
+              ) : (
+                <span><i className="fa-solid fa-check-circle text-[9px] mr-1"></i> Asesor Oficial de Bobinas Express • Consulta de repuestos en tiempo real.</span>
+              )}
             </div>
           </div>
 
@@ -151,7 +174,7 @@ export function SimulatorView({ initialPrompt, onTriggerSaleModal }) {
           {isTyping && (
             <div className="flex justify-start animate-fade-in">
               <div className="bg-white dark:bg-[#202c33] rounded-xl px-4 py-2.5 shadow flex items-center gap-1.5 chat-bubble-tail-in">
-                <span className="text-[11px] text-gray-400 font-medium mr-1">Consultando base de datos</span>
+                <span className="text-[11px] text-gray-400 font-medium mr-1">Verificando disponibilidad</span>
                 <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full pulsing-dot"></span>
                 <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full pulsing-dot"></span>
                 <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full pulsing-dot"></span>
@@ -191,10 +214,12 @@ export function SimulatorView({ initialPrompt, onTriggerSaleModal }) {
         </form>
       </div>
 
-      {/* SQL & Queries Console Sidebar (Takes 1 col on lg) */}
-      <div className="lg:col-span-1">
-        <DatabaseConsole logs={consoleLogs} onClearLogs={clearLogs} />
-      </div>
+      {/* SQL & Queries Console Sidebar (SOLO VISIBLE PARA ADMINS) */}
+      {isAdmin && showAdminConsole && (
+        <div className="lg:col-span-1">
+          <DatabaseConsole logs={consoleLogs} onClearLogs={clearLogs} />
+        </div>
+      )}
     </div>
   );
 }

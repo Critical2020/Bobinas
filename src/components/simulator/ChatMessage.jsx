@@ -1,12 +1,14 @@
 import React from 'react';
 import { useCart } from '../../context/CartContext';
 import { useInventory } from '../../context/InventoryContext';
+import { useAuth } from '../../context/AuthContext';
 import { buildPreOrderUrl } from '../../utils/whatsapp';
 import { formatUSD } from '../../utils/formatters';
 
 export function ChatMessage({ message, onTriggerSaleModal }) {
   const { addToCart } = useCart();
   const { ownerSettings } = useInventory();
+  const { isAdmin } = useAuth();
   const isUser = message.sender === 'user';
 
   const handlePreOrder = (product) => {
@@ -34,7 +36,7 @@ export function ChatMessage({ message, onTriggerSaleModal }) {
             <i className="fa-solid fa-microchip"></i> Asesor Bobinas Express AI
           </div>
 
-          {message.badge && (
+          {isAdmin && message.badge && (
             <div className="mb-2 px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-[9px] font-mono text-sky-600 dark:text-sky-400 border border-slate-200 dark:border-slate-700">
               <i className="fa-solid fa-database mr-1"></i>{message.badge}
             </div>

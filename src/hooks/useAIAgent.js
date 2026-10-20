@@ -15,7 +15,7 @@ const STOP_WORDS = [
 
 export function useAIAgent() {
   const { coils, dbEngine, ownerSettings, processSaleTransaction } = useInventory();
-  const { deviceId } = useAuth();
+  const { deviceId, isAdmin } = useAuth();
   const [consoleLogs, setConsoleLogs] = useState([]);
   const [lastInteractedProduct, setLastInteractedProduct] = useState(null);
 
@@ -125,13 +125,15 @@ export function useAIAgent() {
         hasAction: false,
         badge: `[TX COMMIT ${getEngineLabel(dbEngine)}] Orden #${order.orderId} | Stock: ${order.stockBefore} → ${order.stockAfter}`,
         html: `🎉 <strong>¡VENTA REGISTRADA Y CONFIRMADA! (#${order.orderId})</strong><br><br>
-        He procesado tu reporte de pago y descontado la pieza del inventario en tiempo real:<br>
+        He procesado tu reporte de pago y confirmado tu orden:<br>
         • <strong>Repuesto:</strong> ${order.qty}x ${order.coilName}<br>
         • <strong>Código OEM:</strong> <code>${order.oem}</code><br>
         • <strong>Total Cancelado:</strong> <span class="text-emerald-400 font-extrabold">${formatUSD(order.totalPrice)} USD</span><br>
         • <strong>Método / Ref:</strong> ${order.paymentRef}<br>
-        • <strong>Nuevo Stock en Base de Datos:</strong> De ${order.stockBefore} ➔ <strong>${order.stockAfter} uds</strong><br><br>
-        📲 <em>Se ha enviado la confirmación al WhatsApp del Administrador (${ownerSettings.ownerPhone}) para autorizar la entrega inmediata.</em>`
+        ${isAdmin 
+          ? `• <strong>Nuevo Stock en Base de Datos:</strong> De ${order.stockBefore} ➔ <strong>${order.stockAfter} uds</strong><br><br>`
+          : `• <strong>Estado del Pedido:</strong> <span class="text-emerald-400 font-bold">Aprobado y en preparación para despacho</span><br><br>`}
+        📲 <em>Se ha enviado la confirmación al WhatsApp oficial (${ownerSettings.ownerPhone}) para autorizar la entrega inmediata.</em>`
       };
     }
 
@@ -144,7 +146,7 @@ export function useAIAgent() {
         product: null,
         hasAction: false,
         badge: `DB Query (${getEngineLabel(dbEngine)}): ${inStockList.length} en stock de ${coils.length} totales`,
-        html: `Actualmente disponemos de <strong>${inStockList.length} referencias con stock inmediato</strong> en nuestra base de datos:<br><br>${summaryLines}<br><br>Indícame tu modelo de vehículo o código OEM para darte todos los detalles y coordinar tu pedido.`
+        html: `Actualmente disponemos de <strong>${inStockList.length} referencias con stock inmediato</strong>:<br><br>${summaryLines}<br><br>Indícame tu modelo de vehículo o código OEM para darte todos los detalles y coordinar tu pedido.`
       };
     }
 
@@ -198,10 +200,11 @@ export function useAIAgent() {
       product: null,
       hasAction: false,
       badge: `[${getEngineLabel(dbEngine)}] 0 registros para "${searchKeyword}"`,
-      html: `Consulté la base de datos para <em>"${userPrompt}"</em> y no encontré un registro exacto.<br><br>
-      💡 <em>Tip: Si eres administrador, puedes agregarla desde la pestaña <strong>"Base de Datos & Stock"</strong> o importarla por CSV y preguntarme nuevamente.</em>`
+      html: isAdmin
+        ? `Consulté la base de datos para <em>"${userPrompt}"</em> y no encontré un registro exacto.<br><br>💡 <em>Tip de Administrador: Puedes agregarla desde el panel de <strong>"Base de Datos & Stock"</strong> o importarla por CSV.</em>`
+        : `No encontramos una coincidencia exacta en catálogo para <em>"${userPrompt}"</em>.<br><br>💡 Por favor verifica el año, modelo o código OEM, o escríbenos por WhatsApp directamente para que un especialista te atienda.`
     };
-  }, [coils, dbEngine, deviceId, lastInteractedProduct, logConsoleQuery, ownerSettings.ownerPhone, processSaleTransaction]);
+  }, [coils, dbEngine, deviceId, isAdmin, lastInteractedProduct, logConsoleQuery, ownerSettings.ownerPhone, processSaleTransaction]);
 
   return {
     generateResponse,
