@@ -33,38 +33,77 @@ export function generateAutoCoilId(existingCoils = [], brand = '') {
 }
 
 /**
- * Normalizes raw inventory object from user input, CSV, JSON, or DB
+ * Normalizes raw inventory object from user input, CSV, JSON, Supabase, or external DB
+ * Soporta nombres de columnas tanto en inglés como en español (snake_case y camelCase)
  */
 export function normalizeCoilRecord(raw, existingCoils = []) {
-  const priceVal = parseFloat(raw.price);
+  if (!raw || typeof raw !== 'object') return null;
+
+  // Price / Precio
+  const rawPrice = raw.price ?? raw.precio ?? raw.costo ?? raw.valor ?? raw.precio_usd ?? 25;
+  const priceVal = parseFloat(rawPrice);
   const safePrice = !isNaN(priceVal) && priceVal >= 0 ? priceVal : 25.00;
 
-  const rawOldPrice = parseFloat(raw.oldPrice || raw.old_price);
-  const safeOldPrice = !isNaN(rawOldPrice) && rawOldPrice > 0 ? rawOldPrice : Number((safePrice * 1.2).toFixed(2));
+  // Old Price / Precio Anterior
+  const rawOldPrice = raw.oldPrice ?? raw.old_price ?? raw.precio_anterior ?? raw.precio_lista ?? raw.precio_viejo;
+  const oldPriceVal = parseFloat(rawOldPrice);
+  const safeOldPrice = !isNaN(oldPriceVal) && oldPriceVal > 0 ? oldPriceVal : Number((safePrice * 1.2).toFixed(2));
 
-  const stockVal = parseInt(raw.stock, 10);
+  // Stock / Cantidad
+  const rawStock = raw.stock ?? raw.cantidad ?? raw.existencia ?? raw.inventario ?? raw.unidades ?? raw.qty ?? 0;
+  const stockVal = parseInt(rawStock, 10);
   const safeStock = !isNaN(stockVal) && stockVal >= 0 ? stockVal : 0;
 
-  const idVal = String(raw.id || '').trim();
-  const safeId = idVal ? idVal : generateAutoCoilId(existingCoils, raw.brand);
+  // ID / Código
+  const idVal = String(raw.id ?? raw.ID ?? raw.codigo ?? raw.code ?? raw.id_bobina ?? raw.cod ?? raw._id ?? '').trim();
 
-  const rawImage = String(raw.image || raw.imageUrl || raw.img || raw.foto || '').trim();
+  // Name / Nombre
+  const nameVal = String(raw.name ?? raw.nombre ?? raw.title ?? raw.titulo ?? raw.repuesto ?? raw.producto ?? raw.descripcion ?? '').trim();
+
+  // Brand / Marca
+  const brandVal = String(raw.brand ?? raw.marca ?? raw.fabricante ?? 'Chevrolet').trim();
+
+  const safeId = idVal ? idVal : generateAutoCoilId(existingCoils, brandVal);
+
+  // Model / Modelo
+  const modelVal = String(raw.carModel ?? raw.car_model ?? raw.modelo ?? raw.aplicacion ?? raw.vehiculo ?? raw.auto ?? 'Multimodelo').trim();
+
+  // Engine / Motor
+  const engineVal = String(raw.engine ?? raw.motor ?? raw.cilindrada ?? '1.6L / 2.0L').trim();
+
+  // OEM / Código de Parte
+  const oemVal = String(raw.oem ?? raw.codigo_oem ?? raw.oem_code ?? raw.part_number ?? raw.numero_parte ?? 'OEM-STD').trim();
+
+  // Type / Tipo
+  const typeVal = String(raw.type ?? raw.tipo ?? 'Tipo Lápiz Individual').trim();
+
+  // Connector / Conector
+  const connectorVal = String(raw.connector ?? raw.conector ?? raw.pines ?? 'Conector 4 Pines').trim();
+
+  // Warranty / Garantía
+  const warrantyVal = String(raw.warranty ?? raw.garantia ?? '12 meses').trim();
+
+  // Badge / Etiqueta
+  const badgeVal = String(raw.badge ?? raw.etiqueta ?? raw.tag ?? 'OEM Spec').trim();
+
+  // Image / Imagen
+  const rawImage = String(raw.image ?? raw.imageUrl ?? raw.image_url ?? raw.img ?? raw.foto ?? raw.imagen ?? raw.url_imagen ?? '').trim();
 
   return {
     id: safeId,
-    name: String(raw.name || 'Bobina de Encendido Automotriz').trim(),
-    brand: String(raw.brand || 'Chevrolet').trim(),
-    carModel: String(raw.carModel || raw.car_model || 'Multimodelo').trim(),
-    engine: String(raw.engine || '1.6L / 2.0L').trim(),
-    oem: String(raw.oem || 'OEM-STD').trim(),
-    type: String(raw.type || 'Tipo Lápiz Individual').trim(),
-    connector: String(raw.connector || 'Conector 4 Pines').trim(),
+    name: nameVal || 'Bobina de Encendido Automotriz',
+    brand: brandVal,
+    carModel: modelVal,
+    engine: engineVal,
+    oem: oemVal,
+    type: typeVal,
+    connector: connectorVal,
     price: safePrice,
     oldPrice: safeOldPrice,
     stock: safeStock,
     inStock: safeStock > 0,
-    warranty: String(raw.warranty || '12 meses').trim(),
-    badge: String(raw.badge || 'OEM Spec').trim(),
+    warranty: warrantyVal,
+    badge: badgeVal,
     image: rawImage
   };
 }

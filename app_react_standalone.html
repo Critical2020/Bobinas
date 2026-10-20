@@ -143,29 +143,73 @@
     }
 
     function normalizeCoilRecord(raw, existingCoils = []) {
-      const priceVal = parseFloat(raw.price);
+      if (!raw || typeof raw !== 'object') return null;
+      if (raw.error || raw.message) return null;
+
+      // Price / Precio
+      const rawPrice = raw.price ?? raw.precio ?? raw.costo ?? raw.valor ?? raw.precio_usd ?? 25;
+      const priceVal = parseFloat(rawPrice);
       const safePrice = !isNaN(priceVal) && priceVal >= 0 ? priceVal : 25.00;
-      const rawOldPrice = parseFloat(raw.oldPrice || raw.old_price);
-      const safeOldPrice = !isNaN(rawOldPrice) && rawOldPrice > 0 ? rawOldPrice : Number((safePrice * 1.2).toFixed(2));
-      const stockVal = parseInt(raw.stock, 10);
+
+      // Old Price / Precio Anterior
+      const rawOldPrice = raw.oldPrice ?? raw.old_price ?? raw.precio_anterior ?? raw.precio_lista ?? raw.precio_viejo;
+      const oldPriceVal = parseFloat(rawOldPrice);
+      const safeOldPrice = !isNaN(oldPriceVal) && oldPriceVal > 0 ? oldPriceVal : Number((safePrice * 1.2).toFixed(2));
+
+      // Stock / Cantidad
+      const rawStock = raw.stock ?? raw.cantidad ?? raw.existencia ?? raw.inventario ?? raw.unidades ?? raw.qty ?? 0;
+      const stockVal = parseInt(rawStock, 10);
       const safeStock = !isNaN(stockVal) && stockVal >= 0 ? stockVal : 0;
-      const idVal = String(raw.id || '').trim();
-      const rawImage = String(raw.image || raw.imageUrl || raw.img || raw.foto || '').trim();
+
+      // Brand / Marca
+      const brandVal = String(raw.brand ?? raw.marca ?? raw.fabricante ?? 'Chevrolet').trim();
+
+      // ID / Código
+      const idVal = String(raw.id ?? raw.ID ?? raw.codigo ?? raw.code ?? raw.id_bobina ?? raw.cod ?? raw._id ?? '').trim();
+      const safeId = idVal || generateAutoCoilId(existingCoils, brandVal);
+
+      // Name / Nombre
+      const nameVal = String(raw.name ?? raw.nombre ?? raw.title ?? raw.titulo ?? raw.repuesto ?? raw.producto ?? raw.descripcion ?? '').trim();
+
+      // Model / Modelo
+      const modelVal = String(raw.carModel ?? raw.car_model ?? raw.modelo ?? raw.aplicacion ?? raw.vehiculo ?? raw.auto ?? 'Multimodelo').trim();
+
+      // Engine / Motor
+      const engineVal = String(raw.engine ?? raw.motor ?? raw.cilindrada ?? '1.6L / 2.0L').trim();
+
+      // OEM / Parte
+      const oemVal = String(raw.oem ?? raw.codigo_oem ?? raw.oem_code ?? raw.part_number ?? raw.numero_parte ?? 'OEM-STD').trim();
+
+      // Type / Tipo
+      const typeVal = String(raw.type ?? raw.tipo ?? 'Tipo Lápiz Individual').trim();
+
+      // Connector / Pines
+      const connectorVal = String(raw.connector ?? raw.conector ?? raw.pines ?? 'Conector 4 Pines').trim();
+
+      // Warranty / Garantía
+      const warrantyVal = String(raw.warranty ?? raw.garantia ?? '12 meses').trim();
+
+      // Badge / Etiqueta
+      const badgeVal = String(raw.badge ?? raw.etiqueta ?? raw.tag ?? 'OEM Spec').trim();
+
+      // Image / Foto
+      const rawImage = String(raw.image ?? raw.imageUrl ?? raw.image_url ?? raw.img ?? raw.foto ?? raw.imagen ?? raw.url_imagen ?? '').trim();
+
       return {
-        id: idVal || generateAutoCoilId(existingCoils, raw.brand),
-        name: String(raw.name || 'Bobina de Encendido Automotriz').trim(),
-        brand: String(raw.brand || 'Chevrolet').trim(),
-        carModel: String(raw.carModel || raw.car_model || 'Multimodelo').trim(),
-        engine: String(raw.engine || '1.6L / 2.0L').trim(),
-        oem: String(raw.oem || 'OEM-STD').trim(),
-        type: String(raw.type || 'Tipo Lápiz Individual').trim(),
-        connector: String(raw.connector || 'Conector 4 Pines').trim(),
+        id: safeId,
+        name: nameVal || 'Bobina de Encendido Automotriz',
+        brand: brandVal,
+        carModel: modelVal,
+        engine: engineVal,
+        oem: oemVal,
+        type: typeVal,
+        connector: connectorVal,
         price: safePrice,
         oldPrice: safeOldPrice,
         stock: safeStock,
         inStock: safeStock > 0,
-        warranty: String(raw.warranty || '12 meses').trim(),
-        badge: String(raw.badge || 'OEM Spec').trim(),
+        warranty: warrantyVal,
+        badge: badgeVal,
         image: rawImage
       };
     }
@@ -427,17 +471,36 @@
           } catch (e) {}
 
           if (targetEngine === 'supabase') {
-            const url = String(creds.url || '').replace(/\/+$/, '');
-            const anonKey = creds.anonKey || '';
-            const table = creds.table || 'bobinas_inventario';
-            if (url && anonKey) {
+            const rawUrl = String(creds.url || '').trim();
+            const anonKey = String(creds.anonKey || '').trim();
+            const table = String(creds.table || 'bobinas_inventario').trim();
+            if (rawUrl && anonKey) {
               try {
-                const res = await fetch(`${url}/${table}?select=*`, {
-                  headers: { 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}`, 'Content-Type': 'application/json' }
+                let cleanUrl = rawUrl;
+                if (!/^https?:\/\//i.test(cleanUrl)) cleanUrl = 'https://' + cleanUrl;
+                let baseUrl = cleanUrl;
+                try {
+                  baseUrl = new URL(cleanUrl).origin;
+                } catch (e) {
+                  baseUrl = cleanUrl.replace(/\/+$/, '').replace(/\/rest\/v1.*$/, '');
+                }
+                const res = await fetch(`${baseUrl}/rest/v1/${table}?select=*`, {
+                  headers: { 
+                    'apikey': anonKey, 
+                    'Authorization': `Bearer ${anonKey}`, 
+                    'Content-Type': 'application/json',
+                    'Prefer': 'count=exact'
+                  }
                 });
-                if (res.ok) rawElements = await res.json();
-                else if (res.status === 404 || res.status === 400) { tableCreated = true; rawElements = []; }
-              } catch (e) { rawElements = []; }
+                if (res.ok) {
+                  rawElements = await res.json();
+                } else if (res.status === 404 || res.status === 400) { 
+                  tableCreated = true; 
+                  rawElements = []; 
+                }
+              } catch (e) { 
+                rawElements = []; 
+              }
             }
           } else if (targetEngine === 'mongodb') {
             const uri = String(creds.uri || '').replace(/\/+$/, '');
@@ -463,7 +526,9 @@
             }
           }
 
-          const verified = (Array.isArray(rawElements) ? rawElements : []).filter(i => i && (i.id || i.name)).map(normalizeCoilRecord);
+          const verified = (Array.isArray(rawElements) ? rawElements : [])
+            .map(normalizeCoilRecord)
+            .filter(i => Boolean(i && (i.id || i.name)));
           const elapsed = Math.round(performance.now() - start);
 
           setCoils(verified);
@@ -487,16 +552,38 @@
         }
       };
 
-      const testApiConnection = async (engine = dbEngine) => {
-        return await checkAndSyncDatabase(engine, null, true);
+      const testApiConnection = async (engine = dbEngine, customCreds = null) => {
+        return await checkAndSyncDatabase(engine, customCreds, true);
       };
 
-      const syncWithApi = async (dir = 'pull') => {
+      const syncWithApi = async (dir = 'pull', customCreds = null) => {
+        const targetCreds = customCreds || dbCredentials[dbEngine] || {};
         if (dir === 'pull') {
-          return await checkAndSyncDatabase(dbEngine, null, true);
+          return await checkAndSyncDatabase(dbEngine, targetCreds, true);
         } else {
           showToast(`Guardando ${coils.length} bobinas en ${dbEngine.toUpperCase()}...`);
-          pushToApi(coils, dbEngine, dbCredentials);
+          if (dbEngine === 'supabase') {
+            const creds = targetCreds;
+            if (creds && creds.url && creds.anonKey) {
+              try {
+                let cleanUrl = String(creds.url || '').trim();
+                if (!/^https?:\/\//i.test(cleanUrl)) cleanUrl = 'https://' + cleanUrl;
+                let baseUrl = cleanUrl;
+                try { baseUrl = new URL(cleanUrl).origin; } catch (e) { baseUrl = cleanUrl.replace(/\/+$/, '').replace(/\/rest\/v1.*$/, ''); }
+                const table = String(creds.table || 'bobinas_inventario').trim();
+                await fetch(`${baseUrl}/rest/v1/${table}`, {
+                  method: 'POST',
+                  headers: { 'apikey': creds.anonKey, 'Authorization': `Bearer ${creds.anonKey}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
+                  body: JSON.stringify(coils.map(c => ({
+                    id: c.id, name: c.name, brand: c.brand, car_model: c.carModel, engine: c.engine, oem: c.oem,
+                    type: c.type, connector: c.connector, price: c.price, old_price: c.oldPrice, stock: c.stock,
+                    warranty: c.warranty, badge: c.badge, image: c.image
+                  })))
+                });
+              } catch (e) {}
+            }
+          }
+          pushToApi(coils, dbEngine, targetCreds);
           showToast(`✅ Sincronizados ${coils.length} productos.`);
         }
       };
@@ -1421,12 +1508,20 @@
 
       const handlePingTest = async () => {
         updateDbCredentials(activeTab, tabValues);
-        await testApiConnection(activeTab);
+        await testApiConnection(activeTab, tabValues);
       };
 
-      const handleSyncClick = async () => {
+      const handlePullClick = async () => {
         setIsSyncing(true);
-        await syncWithApi();
+        updateDbCredentials(activeTab, tabValues);
+        await syncWithApi('pull', tabValues);
+        setIsSyncing(false);
+      };
+
+      const handlePushClick = async () => {
+        setIsSyncing(true);
+        updateDbCredentials(activeTab, tabValues);
+        await syncWithApi('push', tabValues);
         setIsSyncing(false);
       };
 
@@ -1569,6 +1664,61 @@
                       <input type="text" value={tabValues.table || ''} onChange={e => handleFieldChange('table', e.target.value)} placeholder="bobinas_inventario" className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white font-mono" required />
                     </div>
                   </div>
+
+                  {/* RLS Notice & SQL Helper */}
+                  <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 text-amber-400 font-bold">
+                        <i className="fa-solid fa-shield-halved"></i>
+                        <span>¿Supabase dice "conectado" pero devuelve 0 artículos?</span>
+                      </div>
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-mono">
+                        Solución RLS
+                      </span>
+                    </div>
+                    <p className="text-slate-300 text-[11px] leading-relaxed">
+                      Supabase activa <strong className="text-white">Row Level Security (RLS)</strong> por defecto al crear tablas nuevas, bloqueando lecturas anónimas y devolviendo 0 filas.
+                      Para permitir que la web lea y guarde bobinas, ve a tu proyecto en <strong>Supabase &rarr; SQL Editor &rarr; New Query</strong> y ejecuta:
+                    </p>
+                    <div className="relative group">
+                      <pre className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-[11px] font-mono text-emerald-400 overflow-x-auto select-all">
+{`-- Desactivar RLS para permitir lectura y guardado desde la web
+ALTER TABLE ${tabValues.table || 'bobinas_inventario'} DISABLE ROW LEVEL SECURITY;`}
+                      </pre>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(`ALTER TABLE ${tabValues.table || 'bobinas_inventario'} DISABLE ROW LEVEL SECURITY;`);
+                          alert('¡Comando SQL copiado al portapapeles! Pégalo en el SQL Editor de Supabase y presiona RUN.');
+                        }}
+                        className="absolute top-2 right-2 px-2.5 py-1 bg-brand-500 hover:bg-brand-600 text-white text-[10px] font-bold rounded shadow transition cursor-pointer flex items-center gap-1"
+                      >
+                        <i className="fa-solid fa-copy"></i>
+                        <span>Copiar SQL</span>
+                      </button>
+                    </div>
+                    <details className="text-[10px] text-slate-400 cursor-pointer pt-1">
+                      <summary className="hover:text-slate-200">¿Prefieres mantener RLS activado con políticas de seguridad? Ver SQL</summary>
+                      <div className="mt-2 relative">
+                        <pre className="bg-slate-950 p-2 rounded-lg border border-slate-800 font-mono text-slate-300 overflow-x-auto text-[10px]">
+{`CREATE POLICY "Acceso publico lectura" ON public.${tabValues.table || 'bobinas_inventario'} FOR SELECT USING (true);
+CREATE POLICY "Acceso publico insercion" ON public.${tabValues.table || 'bobinas_inventario'} FOR INSERT WITH CHECK (true);
+CREATE POLICY "Acceso publico actualizacion" ON public.${tabValues.table || 'bobinas_inventario'} FOR UPDATE USING (true);`}
+                        </pre>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const sql = `CREATE POLICY "Acceso publico lectura" ON public.${tabValues.table || 'bobinas_inventario'} FOR SELECT USING (true);\nCREATE POLICY "Acceso publico insercion" ON public.${tabValues.table || 'bobinas_inventario'} FOR INSERT WITH CHECK (true);\nCREATE POLICY "Acceso publico actualizacion" ON public.${tabValues.table || 'bobinas_inventario'} FOR UPDATE USING (true);`;
+                            navigator.clipboard.writeText(sql);
+                            alert('¡Políticas SQL copiadas!');
+                          }}
+                          className="absolute top-2 right-2 px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[9px] border border-slate-700"
+                        >
+                          Copiar Políticas
+                        </button>
+                      </div>
+                    </details>
+                  </div>
                 </div>
               )}
 
@@ -1618,17 +1768,20 @@
               )}
 
               <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {activeTab !== dbEngine && (
                     <button type="button" onClick={() => changeDbEngine(activeTab)} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold cursor-pointer border border-slate-700">
                       <i className="fa-solid fa-check text-emerald-400 mr-1"></i> Activar este Motor
                     </button>
                   )}
                   <button type="button" onClick={handlePingTest} className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 rounded-xl text-xs font-semibold cursor-pointer border border-sky-500/30">
-                    <i className="fa-solid fa-tower-broadcast mr-1"></i> Probar Conexión (Ping API)
+                    <i className="fa-solid fa-tower-broadcast mr-1"></i> Probar Conexión (Ping)
                   </button>
-                  <button type="button" onClick={handleSyncClick} disabled={isSyncing} className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 rounded-xl text-xs font-semibold cursor-pointer border border-emerald-500/30">
-                    <i className={`fa-solid fa-rotate ${isSyncing ? 'fa-spin text-emerald-400' : ''} mr-1`}></i> {isSyncing ? 'Sincronizando...' : 'Sincronizar con API'}
+                  <button type="button" onClick={handlePullClick} disabled={isSyncing} className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 rounded-xl text-xs font-semibold cursor-pointer border border-emerald-500/30">
+                    <i className={`fa-solid fa-cloud-arrow-down ${isSyncing ? 'fa-bounce text-emerald-400' : ''} mr-1`}></i> {isSyncing ? 'Cargando...' : 'Importar de DB (PULL)'}
+                  </button>
+                  <button type="button" onClick={handlePushClick} disabled={isSyncing} className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-xl text-xs font-semibold cursor-pointer border border-amber-500/30">
+                    <i className={`fa-solid fa-cloud-arrow-up ${isSyncing ? 'fa-bounce text-amber-400' : ''} mr-1`}></i> Exportar a DB (PUSH)
                   </button>
                 </div>
 

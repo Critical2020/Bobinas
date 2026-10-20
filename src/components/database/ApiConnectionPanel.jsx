@@ -41,14 +41,21 @@ export function ApiConnectionPanel() {
   };
 
   const handleTestPing = async () => {
-    // If testing current activeTab, make sure credentials are saved first
     updateDbCredentials(activeTab, formValues);
-    await testApiConnection(activeTab);
+    await testApiConnection(activeTab, formValues);
   };
 
-  const handleSync = async () => {
+  const handlePull = async () => {
     setIsSyncing(true);
-    await syncWithApi('push');
+    updateDbCredentials(activeTab, formValues);
+    await syncWithApi('pull', formValues);
+    setIsSyncing(false);
+  };
+
+  const handlePush = async () => {
+    setIsSyncing(true);
+    updateDbCredentials(activeTab, formValues);
+    await syncWithApi('push', formValues);
     setIsSyncing(false);
   };
 
@@ -220,6 +227,61 @@ export function ApiConnectionPanel() {
                 />
               </div>
             </div>
+
+            {/* RLS Notice & SQL Helper */}
+            <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2 text-amber-400 font-bold">
+                  <i className="fa-solid fa-shield-halved"></i>
+                  <span>¿Supabase dice "conectado" pero devuelve 0 artículos?</span>
+                </div>
+                <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-mono">
+                  Solución RLS
+                </span>
+              </div>
+              <p className="text-slate-300 text-[11px] leading-relaxed">
+                Supabase activa <strong className="text-white">Row Level Security (RLS)</strong> por defecto al crear tablas nuevas, bloqueando lecturas anónimas y devolviendo 0 filas.
+                Para permitir que la web lea y guarde bobinas, ve a tu proyecto en <strong>Supabase &rarr; SQL Editor &rarr; New Query</strong> y ejecuta:
+              </p>
+              <div className="relative group">
+                <pre className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-[11px] font-mono text-emerald-400 overflow-x-auto select-all">
+{`-- Desactivar RLS para permitir lectura y guardado desde la web
+ALTER TABLE ${formValues.table || 'bobinas_inventario'} DISABLE ROW LEVEL SECURITY;`}
+                </pre>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`ALTER TABLE ${formValues.table || 'bobinas_inventario'} DISABLE ROW LEVEL SECURITY;`);
+                    alert('¡Comando SQL copiado al portapapeles! Pégalo en el SQL Editor de Supabase y presiona RUN.');
+                  }}
+                  className="absolute top-2 right-2 px-2.5 py-1 bg-brand-500 hover:bg-brand-600 text-white text-[10px] font-bold rounded shadow transition cursor-pointer flex items-center gap-1"
+                >
+                  <i className="fa-solid fa-copy"></i>
+                  <span>Copiar SQL</span>
+                </button>
+              </div>
+              <details className="text-[10px] text-slate-400 cursor-pointer pt-1">
+                <summary className="hover:text-slate-200">¿Prefieres mantener RLS activado con políticas de seguridad? Ver SQL</summary>
+                <div className="mt-2 relative">
+                  <pre className="bg-slate-950 p-2 rounded-lg border border-slate-800 font-mono text-slate-300 overflow-x-auto text-[10px]">
+{`CREATE POLICY "Acceso publico lectura" ON public.${formValues.table || 'bobinas_inventario'} FOR SELECT USING (true);
+CREATE POLICY "Acceso publico insercion" ON public.${formValues.table || 'bobinas_inventario'} FOR INSERT WITH CHECK (true);
+CREATE POLICY "Acceso publico actualizacion" ON public.${formValues.table || 'bobinas_inventario'} FOR UPDATE USING (true);`}
+                  </pre>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const sql = `CREATE POLICY "Acceso publico lectura" ON public.${formValues.table || 'bobinas_inventario'} FOR SELECT USING (true);\nCREATE POLICY "Acceso publico insercion" ON public.${formValues.table || 'bobinas_inventario'} FOR INSERT WITH CHECK (true);\nCREATE POLICY "Acceso publico actualizacion" ON public.${formValues.table || 'bobinas_inventario'} FOR UPDATE USING (true);`;
+                      navigator.clipboard.writeText(sql);
+                      alert('¡Políticas SQL copiadas!');
+                    }}
+                    className="absolute top-2 right-2 px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[9px] border border-slate-700"
+                  >
+                    Copiar Políticas
+                  </button>
+                </div>
+              </details>
+            </div>
           </div>
         )}
 
@@ -351,7 +413,7 @@ export function ApiConnectionPanel() {
 
         {/* Action Buttons Bar */}
         <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {activeTab !== dbEngine && (
               <button
                 type="button"
@@ -370,18 +432,29 @@ export function ApiConnectionPanel() {
               title="Realizar un ping o prueba de endpoint a la API"
             >
               <i className="fa-solid fa-tower-broadcast"></i>
-              <span>Probar Conexión (Ping API)</span>
+              <span>Probar Conexión (Ping)</span>
             </button>
 
             <button
               type="button"
-              onClick={handleSync}
+              onClick={handlePull}
               disabled={isSyncing}
               className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition border border-emerald-500/30"
-              title="Sincronizar inventario local con el servidor API"
+              title="Traer todas las bobinas desde la base de datos remota"
             >
-              <i className={`fa-solid fa-rotate ${isSyncing ? 'fa-spin text-emerald-400' : ''}`}></i>
-              <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar con API'}</span>
+              <i className={`fa-solid fa-cloud-arrow-down ${isSyncing ? 'fa-bounce text-emerald-400' : ''}`}></i>
+              <span>{isSyncing ? 'Cargando...' : 'Importar de DB (PULL)'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handlePush}
+              disabled={isSyncing}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition border border-amber-500/30"
+              title="Subir el inventario actual a la base de datos remota"
+            >
+              <i className={`fa-solid fa-cloud-arrow-up ${isSyncing ? 'fa-bounce text-amber-400' : ''}`}></i>
+              <span>Exportar a DB (PUSH)</span>
             </button>
           </div>
 

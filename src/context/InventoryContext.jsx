@@ -222,31 +222,60 @@ Directrices de conversación:
 
       // 1. Si el motor activo es Supabase
       if (targetEngine === 'supabase') {
-        const url = String(creds.url || '').replace(/\/+$/, '');
-        const anonKey = creds.anonKey || '';
-        const table = creds.table || 'bobinas_inventario';
+        const rawUrl = creds.url || '';
+        const anonKey = String(creds.anonKey || '').trim();
+        const table = String(creds.table || 'bobinas_inventario').trim();
 
-        if (url && anonKey) {
-          const endpoint = `${url}/${table}?select=*`;
+        if (!rawUrl || !anonKey) {
+          throw new Error('Faltan credenciales de Supabase: Ingresa la URL del proyecto y el Anon Key');
+        }
+
+        // Normalizar URL: asegurar origen limpio para endpoint de Supabase
+        let cleanUrl = String(rawUrl).trim();
+        if (!/^https?:\/\//i.test(cleanUrl)) {
+          cleanUrl = 'https://' + cleanUrl;
+        }
+        let baseUrl = cleanUrl;
+        try {
+          baseUrl = new URL(cleanUrl).origin;
+        } catch (e) {
+          baseUrl = cleanUrl.replace(/\/+$/, '').replace(/\/rest\/v1.*$/, '');
+        }
+
+        const endpoint = `${baseUrl}/rest/v1/${table}?select=*`;
+
+        const response = await fetch(endpoint, {
+          method: 'GET',
+          headers: {
+            'apikey': anonKey,
+            'Authorization': `Bearer ${anonKey}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'count=exact'
+          }
+        });
+
+        if (response.ok) {
+          const rows = await response.json();
+          rawElements = Array.isArray(rows) ? rows : [];
+
+          // Notificación si la tabla devolvió 0 filas pero tiene RLS activado
+          if (rawElements.length === 0 && showNotification) {
+            showToast(`⚠️ Supabase conectado: Tabla '${table}' devolvió 0 bobinas. Si ya insertaste filas, desactiva RLS con: ALTER TABLE ${table} DISABLE ROW LEVEL SECURITY;`, 'warning');
+          }
+        } else {
+          const errText = await response.text();
+          let parsedError = errText;
           try {
-            const response = await fetch(endpoint, {
-              method: 'GET',
-              headers: {
-                'apikey': anonKey,
-                'Authorization': `Bearer ${anonKey}`,
-                'Content-Type': 'application/json'
-              }
-            });
+            const errObj = JSON.parse(errText);
+            parsedError = errObj.message || errObj.hint || errObj.details || errText;
+          } catch (e) {}
 
-            if (response.ok) {
-              rawElements = await response.json();
-            } else if (response.status === 404 || response.status === 400) {
-              tableCreated = true;
-              rawElements = [];
-            }
-          } catch (fetchErr) {
-            // Si falla la conexión a Supabase, mantener vacío
-            rawElements = [];
+          if (response.status === 404 || parsedError.includes('relation') || parsedError.includes('does not exist')) {
+            throw new Error(`La tabla '${table}' no fue encontrada en Supabase. Verifica el nombre o URL (${endpoint}).`);
+          } else if (response.status === 401 || response.status === 403) {
+            throw new Error(`Acceso no autorizado en Supabase (Error ${response.status}). Revisa tu Anon Key o permisos de RLS.`);
+          } else {
+            throw new Error(`Error Supabase HTTP ${response.status}: ${parsedError.slice(0, 140)}`);
           }
         }
       } else if (targetEngine === 'mongodb') {
@@ -295,10 +324,10 @@ Directrices de conversación:
         }
       }
 
-      // --- VERIFICACIÓN DE ELEMENTOS ---
+      // --- VERIFICACIÓN Y NORMALIZACIÓN BILINGÜE DE ELEMENTOS ---
       const verifiedElements = (Array.isArray(rawElements) ? rawElements : [])
-        .filter(item => item && (item.id || item.name))
-        .map(item => normalizeCoilRecord(item));
+        .map(item => normalizeCoilRecord(item))
+        .filter(item => Boolean(item && (item.id || item.name)));
 
       const elapsed = Math.round(performance.now() - startTime);
 
@@ -319,7 +348,8 @@ Directrices de conversación:
         latency: Math.max(14, elapsed),
         lastChecked: new Date(),
         message: statusMsg,
-        itemCount: verifiedElements.length
+        itemCount: verifiedElements.length,
+        hasZeroItems: verifiedElements.length === 0
       });
 
       if (showNotification) {
@@ -659,19 +689,64 @@ Directrices de conversación:
     showToast(`Credenciales para ${engine.toUpperCase()} guardadas`);
   }, [coils, dbCredentials, dbEngine, showToast]);
 
-  const testApiConnection = useCallback(async (engine = dbEngine) => {
-    return await checkAndSyncDatabase(engine, null, true);
+  const testApiConnection = useCallback(async (engine = dbEngine, customCreds = null) => {
+    return await checkAndSyncDatabase(engine, customCreds, true);
   }, [checkAndSyncDatabase, dbEngine]);
 
-  const syncWithApi = useCallback(async (direction = 'pull') => {
+  const syncWithApi = useCallback(async (direction = 'pull', customCreds = null) => {
+    const targetCreds = customCreds || dbCredentials[dbEngine] || {};
     if (direction === 'pull') {
-      return await checkAndSyncDatabase(dbEngine, null, true);
+      showToast(`Consultando inventario en ${dbEngine.toUpperCase()}...`);
+      return await checkAndSyncDatabase(dbEngine, targetCreds, true);
     } else {
       showToast(`Guardando ${coils.length} bobinas en ${dbEngine.toUpperCase()}...`);
-      pushToApi(coils);
-      showToast(`✅ Sincronizados ${coils.length} productos con la base de datos.`);
+      if (dbEngine === 'supabase') {
+        const creds = customCreds || dbCredentials.supabase;
+        if (creds && creds.url && creds.anonKey) {
+          try {
+            let cleanUrl = String(creds.url || '').trim();
+            if (!/^https?:\/\//i.test(cleanUrl)) cleanUrl = 'https://' + cleanUrl;
+            let baseUrl = cleanUrl;
+            try {
+              baseUrl = new URL(cleanUrl).origin;
+            } catch (e) {
+              baseUrl = cleanUrl.replace(/\/+$/, '').replace(/\/rest\/v1.*$/, '');
+            }
+            const table = String(creds.table || 'bobinas_inventario').trim();
+            const endpoint = `${baseUrl}/rest/v1/${table}`;
+            const formatted = coils.map(c => ({
+              id: c.id,
+              name: c.name,
+              brand: c.brand,
+              car_model: c.carModel,
+              engine: c.engine,
+              oem: c.oem,
+              type: c.type,
+              connector: c.connector,
+              price: c.price,
+              old_price: c.oldPrice,
+              stock: c.stock,
+              warranty: c.warranty,
+              badge: c.badge,
+              image: c.image
+            }));
+            await fetch(endpoint, {
+              method: 'POST',
+              headers: {
+                'apikey': creds.anonKey,
+                'Authorization': `Bearer ${creds.anonKey}`,
+                'Content-Type': 'application/json',
+                'Prefer': 'resolution=merge-duplicates'
+              },
+              body: JSON.stringify(formatted)
+            });
+          } catch (e) {}
+        }
+      }
+      pushToApi(coils, dbEngine, targetCreds);
+      showToast(`✅ Sincronizados ${coils.length} productos con ${dbEngine.toUpperCase()}.`);
     }
-  }, [checkAndSyncDatabase, coils, dbEngine, showToast]);
+  }, [checkAndSyncDatabase, coils, dbCredentials, dbEngine, showToast]);
 
   return (
     <InventoryContext.Provider value={{
