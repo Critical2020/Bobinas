@@ -6,7 +6,7 @@ import { CoilCard } from './CoilCard';
 import { CatalogFilters } from './CatalogFilters';
 
 export function CatalogView({ onNavigateTab, onAskAIAboutCoil, onEditCoil }) {
-  const { coils } = useInventory();
+  const { coils, isDbLoading, dbEngine } = useInventory();
   const { toggleCart } = useCart();
   const { isAdmin, openAuthModal } = useAuth();
 
@@ -130,15 +130,23 @@ export function CatalogView({ onNavigateTab, onAskAIAboutCoil, onEditCoil }) {
         </p>
       </div>
 
-      {/* Grid of Products */}
-      {coils.length === 0 ? (
+      {/* Grid of Products or Empty/Loading State */}
+      {isDbLoading ? (
+        <div className="bg-slate-800/40 border border-slate-700/60 rounded-2xl p-12 text-center max-w-md mx-auto space-y-3 animate-fade-in">
+          <div className="h-10 w-10 border-2 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <h3 className="text-sm font-bold text-white">Consultando base de datos ({dbEngine.toUpperCase()})...</h3>
+          <p className="text-xs text-slate-400">Verificando elementos e inventario en tiempo real.</p>
+        </div>
+      ) : coils.length === 0 ? (
         <div className="bg-slate-800/50 border border-slate-700/60 rounded-2xl p-12 text-center max-w-lg mx-auto space-y-4">
           <div className="h-16 w-16 bg-slate-700/50 rounded-full flex items-center justify-center mx-auto text-slate-400 text-2xl">
             <i className="fa-solid fa-box-open"></i>
           </div>
           <h3 className="text-lg font-bold text-white">Inventario vacío (0 bobinas)</h3>
           <p className="text-xs text-slate-400">
-            Has vaciado los artículos de la Base de Datos. Puedes ingresar nuevas bobinas desde la sección de Base de Datos o restaurar las referencias de fábrica.
+            {isAdmin 
+              ? 'Has vaciado los artículos de la Base de Datos. Puedes ingresar nuevas bobinas desde la sección de Base de Datos, importar un archivo CSV o restaurar las referencias de demostración.'
+              : 'Actualmente no hay bobinas en el catálogo. Estamos actualizando el inventario en tiempo real. Escríbenos por WhatsApp para consultar existencia de piezas.'}
           </p>
           {isAdmin && (
             <div className="flex justify-center gap-2 pt-2">

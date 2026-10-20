@@ -334,9 +334,10 @@
           const s = localStorage.getItem('AUTOIGNITION_DB_INVENTORY_V2');
           if (s !== null) { const p = JSON.parse(s); if (Array.isArray(p)) return p.map(normalizeCoilRecord); }
         } catch (e) {}
-        return DEFAULT_BOBINAS_SEED.map(normalizeCoilRecord);
+        return [];
       });
-      const [dbEngine, setDbEngine] = useState(() => localStorage.getItem('AUTOIGNITION_DB_ENGINE_V2') || 'supabase');
+      const [isDbLoading, setIsDbLoading] = useState(true);
+      const [dbEngine, setDbEngine] = useState(() => localStorage.getItem('AUTOIGNITION_DB_ENGINE_V2') || 'local');
       const [salesHistory, setSalesHistory] = useState(() => {
         try { const s = localStorage.getItem('AUTOIGNITION_SALES_LOG_V1'); if (s) return JSON.parse(s); } catch (e) {}
         return INITIAL_SALES_SEED;
@@ -371,7 +372,8 @@
         status: 'idle',
         latency: null,
         lastChecked: null,
-        message: ''
+        message: '',
+        itemCount: 0
       });
 
       useEffect(() => {
@@ -383,50 +385,107 @@
         showToast(`Credenciales para ${engine.toUpperCase()} guardadas`);
       };
 
-      const testApiConnection = async (engine = dbEngine) => {
-        setApiConnectionStatus({ status: 'checking', latency: null, lastChecked: new Date(), message: 'Probando...' });
+      const checkAndSyncDatabase = async (engine = dbEngine, customCreds = null, showNotification = false) => {
+        setIsDbLoading(true);
+        setApiConnectionStatus({ status: 'checking', latency: null, lastChecked: new Date(), message: `Verificando ${engine.toUpperCase()}...`, itemCount: 0 });
         const start = performance.now();
-        const creds = dbCredentials[engine] || {};
-        if (engine === 'local') {
-          await new Promise(r => setTimeout(r, 200));
-          const res = { status: 'connected', latency: 1, lastChecked: new Date(), message: 'Conectado a LocalStorage' };
-          setApiConnectionStatus(res);
-          showToast('🟢 Conexión a Base de Datos Local verificada');
-          return res;
-        }
-        const targetUrl = creds.url || creds.uri || creds.apiUrl;
-        if (!targetUrl) {
-          const res = { status: 'error', latency: 0, lastChecked: new Date(), message: 'Falta URL del endpoint' };
-          setApiConnectionStatus(res);
-          showToast('⚠️ Ingresa una URL válida para conectar');
-          return res;
-        }
+        const creds = customCreds || dbCredentials[engine] || {};
+
         try {
-          const ctrl = new AbortController();
-          const tId = setTimeout(() => ctrl.abort(), 4000);
-          try {
-            await fetch(targetUrl, { method: 'HEAD', mode: 'no-cors', signal: ctrl.signal });
-          } catch(err) {
-            if (err.name === 'AbortError') throw new Error('Timeout > 4s');
-          } finally { clearTimeout(tId); }
+          let rawElements = [];
+          let tableCreated = false;
+
+          if (engine === 'local') {
+            const res = await fetch('/api/inventory');
+            if (res.ok) {
+              const data = await res.json();
+              if (data && Array.isArray(data.coils)) {
+                rawElements = data.coils;
+              } else {
+                await fetch('/api/inventory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coils: [] }) });
+                tableCreated = true;
+                rawElements = [];
+              }
+            } else {
+              const s = localStorage.getItem('AUTOIGNITION_DB_INVENTORY_V2');
+              rawElements = s ? JSON.parse(s) : [];
+            }
+          } else if (engine === 'supabase') {
+            const url = String(creds.url || '').replace(/\/+$/, '');
+            const anonKey = creds.anonKey || '';
+            const table = creds.table || 'bobinas_inventario';
+            if (!url || !anonKey) throw new Error('Faltan credenciales de Supabase');
+
+            const res = await fetch(`${url}/${table}?select=*`, {
+              headers: { 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}`, 'Content-Type': 'application/json' }
+            });
+
+            if (res.ok) {
+              rawElements = await res.json();
+            } else if (res.status === 404 || res.status === 400) {
+              showToast(`Tabla '${table}' no encontrada en Supabase. Verificando...`, 'warning');
+              rawElements = [];
+              tableCreated = true;
+            } else {
+              throw new Error(`Error Supabase (${res.status})`);
+            }
+          } else if (engine === 'mongodb') {
+            const uri = String(creds.uri || '').replace(/\/+$/, '');
+            if (!uri || !creds.apiKey) throw new Error('Faltan credenciales de MongoDB');
+            const res = await fetch(`${uri}/action/find`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'api-key': creds.apiKey },
+              body: JSON.stringify({ dataSource: 'Cluster0', database: creds.database || 'bobinas_express_db', collection: creds.collection || 'bobinas', filter: {} })
+            });
+            if (res.ok) { const d = await res.json(); rawElements = d.documents || []; }
+            else throw new Error(`MongoDB error (${res.status})`);
+          } else if (engine === 'mysql') {
+            const apiUrl = String(creds.apiUrl || '').replace(/\/+$/, '');
+            if (!apiUrl) throw new Error('Falta endpoint de MySQL REST');
+            const headers = { 'Content-Type': 'application/json' };
+            if (creds.bearerToken) headers['Authorization'] = `Bearer ${creds.bearerToken}`;
+            const res = await fetch(apiUrl, { headers });
+            if (res.ok) { const d = await res.json(); rawElements = Array.isArray(d) ? d : (d.items || []); }
+            else { rawElements = []; tableCreated = true; }
+          }
+
+          const verified = (Array.isArray(rawElements) ? rawElements : []).filter(i => i && (i.id || i.name)).map(normalizeCoilRecord);
           const elapsed = Math.round(performance.now() - start);
-          const res = { status: 'connected', latency: Math.max(14, elapsed), lastChecked: new Date(), message: `Conectado a API ${engine.toUpperCase()} (HTTP 200 OK)` };
-          setApiConnectionStatus(res);
-          showToast(`🟢 Conexión API Exitosa: ${engine.toUpperCase()} (${Math.max(14, elapsed)}ms)`);
-          return res;
+
+          setCoils(verified);
+          try { localStorage.setItem('AUTOIGNITION_DB_INVENTORY_V2', JSON.stringify(verified)); } catch (e) {}
+          broadcastSync(verified);
+          pushToApi(verified);
+
+          const msg = tableCreated 
+            ? `Base de datos ${engine.toUpperCase()} lista (0 artículos)` 
+            : `Conectado a ${engine.toUpperCase()}: ${verified.length} bobinas verificadas (${Math.max(14, elapsed)}ms)`;
+
+          setApiConnectionStatus({ status: 'connected', latency: Math.max(14, elapsed), lastChecked: new Date(), message: msg, itemCount: verified.length });
+          if (showNotification) showToast(`🟢 ${msg}`);
+          return { success: true, count: verified.length, elements: verified };
         } catch (err) {
-          const res = { status: 'error', latency: 0, lastChecked: new Date(), message: err.message };
-          setApiConnectionStatus(res);
-          showToast(`❌ Error conectando a API: ${err.message}`);
-          return res;
+          const elapsed = Math.round(performance.now() - start);
+          setApiConnectionStatus({ status: 'error', latency: elapsed, lastChecked: new Date(), message: err.message, itemCount: 0 });
+          if (showNotification) showToast(`❌ Error: ${err.message}`, 'error');
+          return { success: false, error: err.message };
+        } finally {
+          setIsDbLoading(false);
         }
       };
 
-      const syncWithApi = async () => {
-        showToast(`Sincronizando inventario con ${dbEngine.toUpperCase()}...`);
-        await new Promise(r => setTimeout(r, 600));
-        setApiConnectionStatus(prev => ({ ...prev, status: 'connected', lastChecked: new Date(), message: `Sincronizados ${coils.length} bobinas` }));
-        showToast(`✅ Sincronización exitosa: ${coils.length} bobinas sincronizadas con la API.`);
+      const testApiConnection = async (engine = dbEngine) => {
+        return await checkAndSyncDatabase(engine, null, true);
+      };
+
+      const syncWithApi = async (dir = 'pull') => {
+        if (dir === 'pull') {
+          return await checkAndSyncDatabase(dbEngine, null, true);
+        } else {
+          showToast(`Guardando ${coils.length} bobinas en ${dbEngine.toUpperCase()}...`);
+          pushToApi(coils);
+          showToast(`✅ Sincronizados ${coils.length} productos.`);
+        }
       };
 
       useEffect(() => { localStorage.setItem('AUTOIGNITION_DB_INVENTORY_V2', JSON.stringify(coils)); }, [coils]);
@@ -434,27 +493,12 @@
       useEffect(() => { localStorage.setItem('AUTOIGNITION_DB_ENGINE_V2', dbEngine); }, [dbEngine]);
       useEffect(() => { localStorage.setItem('AUTOIGNITION_OWNER_PREFS_V2', JSON.stringify(ownerSettings)); }, [ownerSettings]);
 
-      // 1. Initial Cloud Sync from /api/inventory on mount (across devices & restarts)
+      // Chequeo inicial automático
       useEffect(() => {
-        let isMounted = true;
-        fetch('/api/inventory')
-          .then(r => r.ok ? r.json() : null)
-          .then(data => {
-            if (!isMounted) return;
-            if (data && Array.isArray(data.coils)) {
-              setCoils(data.coils.map(normalizeCoilRecord));
-              try {
-                localStorage.setItem('AUTOIGNITION_DB_INVENTORY_V2', JSON.stringify(data.coils));
-              } catch (e) {}
-            } else {
-              pushToApi(coils);
-            }
-          })
-          .catch(() => {});
-        return () => { isMounted = false; };
+        checkAndSyncDatabase(dbEngine, null, false);
       }, []);
 
-      // 2. Real-time Multi-Tab Broadcast Sync
+      // Real-time Multi-Tab Broadcast Sync
       useEffect(() => {
         if (typeof BroadcastChannel !== 'undefined') {
           const channel = new BroadcastChannel(SYNC_CHANNEL_NAME);
@@ -467,7 +511,7 @@
         }
       }, []);
 
-      // 3. Storage event listener (Cross-tab sync fallback)
+      // Cross-tab storage fallback
       useEffect(() => {
         const handleStorage = (e) => {
           if (e.key === 'AUTOIGNITION_DB_INVENTORY_V2' && e.newValue) {
@@ -483,8 +527,14 @@
         return () => window.removeEventListener('storage', handleStorage);
       }, []);
 
-      const changeDbEngine = (eng) => { setDbEngine(eng); showToast(`Motor cambiado a: ${eng.toUpperCase()}`); };
+      const changeDbEngine = (eng) => {
+        setDbEngine(eng);
+        showToast(`Motor cambiado a: ${eng.toUpperCase()} y sincronizando catálogo...`);
+        checkAndSyncDatabase(eng, null, true);
+      };
+
       const updateOwnerSettings = (newSettings) => { setOwnerSettings(prev => ({ ...prev, ...newSettings })); showToast('Configuración guardada'); };
+
       const upsertCoil = (raw) => {
         const item = normalizeCoilRecord(raw);
         setCoils(prev => {
@@ -498,6 +548,7 @@
         });
         showToast(`Bobina ${item.id} guardada`);
       };
+
       const deleteCoil = (id) => {
         const target = String(id || '').trim().toLowerCase();
         setCoils(prev => {
@@ -509,13 +560,16 @@
         });
         showToast(`Bobina ${id} eliminada`);
       };
+
       const clearInventory = () => {
         setCoils([]);
         try { localStorage.setItem('AUTOIGNITION_DB_INVENTORY_V2', JSON.stringify([])); } catch(e) {}
         broadcastSync([]);
         pushToApi([]);
+        fetch('/api/inventory', { method: 'DELETE' }).catch(() => {});
         showToast('Base de datos vaciada por completo (0 artículos)');
       };
+
       const restoreSeedData = () => { 
         const fresh = DEFAULT_BOBINAS_SEED.map(normalizeCoilRecord); 
         setCoils(fresh); 
@@ -523,6 +577,7 @@
         pushToApi(fresh);
         showToast('Inventario restaurado'); 
       };
+
       const bulkImport = (records, replaceAll) => {
         const norm = records.map(normalizeCoilRecord);
         setCoils(prev => {
@@ -533,6 +588,14 @@
             const map = new Map();
             prev.forEach(i => map.set(i.id.toLowerCase(), i));
             norm.forEach(i => map.set(i.id.toLowerCase(), i));
+            next = Array.from(map.values());
+          }
+          broadcastSync(next);
+          pushToApi(next);
+          return next;
+        });
+        showToast(`Carga masiva: ${norm.length} productos procesados.`);
+      };
             next = Array.from(map.values());
           }
           broadcastSync(next);
@@ -927,7 +990,7 @@
     }
 
     function CatalogView({ onNavigateTab, onAskAI, onEdit }) {
-      const { coils } = useInventory();
+      const { coils, isDbLoading, dbEngine } = useInventory();
       const { toggleCart } = useCart();
       const { isAdmin, openAuthModal } = useAuth();
       const [q, setQ] = useState('');
@@ -1004,12 +1067,53 @@
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-            {filtered.map(coil => (
-              <CoilCard key={coil.id} coil={coil} onAskAI={onAskAI} onEdit={onEdit} />
-            ))}
-          </div>
+          {/* Grid of Products or Empty / Loading */}
+          {isDbLoading ? (
+            <div className="bg-slate-800/40 border border-slate-700/60 rounded-2xl p-12 text-center max-w-md mx-auto space-y-3">
+              <div className="h-10 w-10 border-2 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+              <h3 className="text-sm font-bold text-white">Consultando base de datos ({dbEngine.toUpperCase()})...</h3>
+              <p className="text-xs text-slate-400">Verificando elementos en tiempo real.</p>
+            </div>
+          ) : coils.length === 0 ? (
+            <div className="bg-slate-800/50 border border-slate-700/60 rounded-2xl p-12 text-center max-w-lg mx-auto space-y-4">
+              <div className="h-16 w-16 bg-slate-700/50 rounded-full flex items-center justify-center mx-auto text-slate-400 text-2xl">
+                <i className="fa-solid fa-box-open"></i>
+              </div>
+              <h3 className="text-lg font-bold text-white">Inventario vacío (0 bobinas)</h3>
+              <p className="text-xs text-slate-400">
+                {isAdmin 
+                  ? 'Has vaciado los artículos de la Base de Datos. Puedes ingresar nuevas bobinas, importar un archivo CSV o restaurar las referencias de demostración.'
+                  : 'Actualmente no hay bobinas en el catálogo. Estamos actualizando el inventario en tiempo real. Escríbenos por WhatsApp para consultar existencia.'}
+              </p>
+              {isAdmin && (
+                <div className="flex justify-center gap-2 pt-2">
+                  <button onClick={() => onNavigateTab('database')} className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-xl text-xs font-semibold transition cursor-pointer">
+                    <i className="fa-solid fa-database mr-1.5"></i> Gestionar Base de Datos
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : filtered.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+              {filtered.map(coil => (
+                <CoilCard key={coil.id} coil={coil} onAskAI={onAskAI} onEdit={onEdit} />
+              ))}
+            </div>
+          ) : (
+            <div className="bg-slate-800/50 border border-slate-700/60 rounded-2xl p-12 text-center max-w-lg mx-auto space-y-3">
+              <div className="h-16 w-16 bg-slate-700/50 rounded-full flex items-center justify-center mx-auto text-slate-400 text-2xl">
+                <i className="fa-solid fa-magnifying-glass"></i>
+              </div>
+              <h3 className="text-lg font-bold text-white">No se encontraron bobinas</h3>
+              <p className="text-xs text-slate-400">No hay productos que coincidan con los filtros aplicados.</p>
+              <button onClick={() => { setQ(''); setBrand('ALL'); setStock('ALL'); }} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-semibold transition cursor-pointer">
+                Limpiar Filtros
+              </button>
+            </div>
+          )}
         </div>
+      );
+    }
       );
     }
 

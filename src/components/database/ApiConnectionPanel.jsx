@@ -136,6 +136,33 @@ export function ApiConnectionPanel() {
         })}
       </div>
 
+      {/* Live Diagnostic Notice */}
+      {apiConnectionStatus.message && (
+        <div className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-2 transition ${
+          apiConnectionStatus.status === 'connected' 
+            ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300' 
+            : apiConnectionStatus.status === 'error'
+            ? 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+            : 'bg-sky-950/40 border-sky-500/30 text-sky-300'
+        }`}>
+          <div className="flex items-center gap-2">
+            <i className={`fa-solid ${
+              apiConnectionStatus.status === 'connected' 
+                ? 'fa-circle-check text-emerald-400' 
+                : apiConnectionStatus.status === 'error'
+                ? 'fa-triangle-exclamation text-rose-400'
+                : 'fa-spinner fa-spin text-sky-400'
+            }`}></i>
+            <span className="font-medium">{apiConnectionStatus.message}</span>
+          </div>
+          {apiConnectionStatus.status === 'connected' && (
+            <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-mono shrink-0">
+              {coils.length} bobinas verificadas
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Connection Form by Tab */}
       <form onSubmit={handleSave} className="space-y-3.5 bg-slate-950/60 p-4 rounded-xl border border-slate-800">
         {/* Supabase Tab */}

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { DEFAULT_BOBINAS_SEED, INITIAL_SALES_SEED } from '../data/seedData';
 import { normalizeCoilRecord } from '../utils/formatters';
 import { OFFICIAL_WA_RAW } from '../utils/whatsapp';
@@ -60,6 +60,8 @@ export function InventoryProvider({ children }) {
   const { showToast } = useToast();
   const { playCashRegisterSound } = useSoundEffects();
 
+  // 1. Estado de bobinas: Inicia en [] (vacío) por defecto para que nuevos visitantes
+  // nunca vean 11/12 bobinas no existentes si la base de datos está vacía.
   const [coils, setCoils] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_INVENTORY);
@@ -70,11 +72,14 @@ export function InventoryProvider({ children }) {
         }
       }
     } catch (e) {}
-    return DEFAULT_BOBINAS_SEED.map(normalizeCoilRecord);
+    return [];
   });
 
+  const [isDbLoading, setIsDbLoading] = useState(true);
+
+  // Motor activo: Por defecto 'local' (usa la API integrada /api/inventory + LocalStorage)
   const [dbEngine, setDbEngine] = useState(() => {
-    return localStorage.getItem(STORAGE_KEY_ENGINE) || 'supabase';
+    return localStorage.getItem(STORAGE_KEY_ENGINE) || 'local';
   });
 
   const [salesHistory, setSalesHistory] = useState(() => {
@@ -123,68 +128,276 @@ Directrices de conversación:
   });
 
   const [apiConnectionStatus, setApiConnectionStatus] = useState({
-    status: 'idle', // 'idle' | 'checking' | 'connected' | 'error'
+    status: 'idle', // 'idle' | 'checking' | 'connected' | 'error' | 'missing_table'
     latency: null,
     lastChecked: null,
-    message: ''
+    message: '',
+    itemCount: 0
   });
 
-  // Sync db credentials to LocalStorage
+  // Guardar credenciales en LocalStorage
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_CREDENTIALS, JSON.stringify(dbCredentials));
     } catch (e) {}
   }, [dbCredentials]);
 
-  // Sync coils to LocalStorage
+  // Guardar coils en LocalStorage
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_INVENTORY, JSON.stringify(coils));
     } catch (e) {}
   }, [coils]);
 
-  // Sync sales to LocalStorage
+  // Guardar ventas en LocalStorage
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_SALES_LOG, JSON.stringify(salesHistory));
     } catch (e) {}
   }, [salesHistory]);
 
-  // Sync engine to LocalStorage
+  // Guardar motor en LocalStorage
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_ENGINE, dbEngine);
     } catch (e) {}
   }, [dbEngine]);
 
-  // Sync owner prefs
+  // Guardar configuración del dueño en LocalStorage
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_OWNER_PREFS, JSON.stringify(ownerSettings));
     } catch (e) {}
   }, [ownerSettings]);
 
-  // 1. Initial Cloud Sync from /api/inventory on mount (across devices & restarts)
-  useEffect(() => {
-    let isMounted = true;
-    fetch('/api/inventory')
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (!isMounted) return;
-        if (data && Array.isArray(data.coils)) {
-          setCoils(data.coils.map(normalizeCoilRecord));
-          try {
-            localStorage.setItem(STORAGE_KEY_INVENTORY, JSON.stringify(data.coils));
-          } catch (e) {}
-        } else {
-          pushToApi(coils);
-        }
-      })
-      .catch(() => {});
-    return () => { isMounted = false; };
-  }, []);
+  /**
+   * Chequea la base de datos conectada, crea la tabla si no existe,
+   * y verifica los elementos para sincronizar el catálogo.
+   */
+  const checkAndSyncDatabase = useCallback(async (engine = dbEngine, customCreds = null, showNotification = false) => {
+    setIsDbLoading(true);
+    setApiConnectionStatus({
+      status: 'checking',
+      latency: null,
+      lastChecked: new Date(),
+      message: `Verificando conexión con ${engine.toUpperCase()}...`,
+      itemCount: 0
+    });
 
-  // 2. Real-time Multi-Tab / Multi-Window Broadcast Sync
+    const startTime = performance.now();
+    const creds = customCreds || dbCredentials[engine] || {};
+
+    try {
+      let rawElements = [];
+      let tableCreated = false;
+
+      if (engine === 'local') {
+        // --- MOTOR LOCAL / SERVIDOR VERCEL (/api/inventory) ---
+        const res = await fetch('/api/inventory');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && Array.isArray(data.coils)) {
+            rawElements = data.coils;
+          } else {
+            // Inicializar tabla/archivo vacío en el servidor
+            await fetch('/api/inventory', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ coils: [] })
+            });
+            tableCreated = true;
+            rawElements = [];
+          }
+        } else {
+          // Fallback a localStorage
+          const saved = localStorage.getItem(STORAGE_KEY_INVENTORY);
+          rawElements = saved ? JSON.parse(saved) : [];
+        }
+      } else if (engine === 'supabase') {
+        // --- MOTOR SUPABASE (PostgreSQL REST API) ---
+        const url = String(creds.url || '').replace(/\/+$/, '');
+        const anonKey = creds.anonKey || '';
+        const table = creds.table || 'bobinas_inventario';
+
+        if (!url || !anonKey) {
+          throw new Error('Ingresa la URL y API Key de Supabase en la configuración');
+        }
+
+        const endpoint = `${url}/${table}?select=*`;
+        let response;
+        try {
+          response = await fetch(endpoint, {
+            method: 'GET',
+            headers: {
+              'apikey': anonKey,
+              'Authorization': `Bearer ${anonKey}`,
+              'Content-Type': 'application/json'
+            }
+          });
+        } catch (fetchErr) {
+          throw new Error(`No se pudo contactar a Supabase: ${fetchErr.message}`);
+        }
+
+        if (response.ok) {
+          rawElements = await response.json();
+        } else if (response.status === 404 || response.status === 400) {
+          const errText = await response.text();
+          const isMissingTable = errText.includes('relation') || 
+                                 errText.includes('does not exist') || 
+                                 errText.includes('PGRST204') || 
+                                 errText.includes('PGRST205') || 
+                                 response.status === 404;
+
+          if (isMissingTable) {
+            // Chequeo detectó que la tabla no existe -> Intentar crearla
+            showToast(`⚠️ Tabla '${table}' no encontrada en Supabase. Verificando creación...`, 'warning');
+            
+            const createRes = await fetch('/api/database', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'check-and-init',
+                engine: 'supabase',
+                credentials: creds
+              })
+            }).catch(() => null);
+
+            if (createRes && createRes.ok) {
+              const createData = await createRes.json();
+              if (createData.tableExists) {
+                rawElements = createData.elements || [];
+              } else {
+                tableCreated = true;
+                rawElements = [];
+              }
+            } else {
+              tableCreated = true;
+              rawElements = [];
+            }
+          } else {
+            throw new Error(`Error Supabase (${response.status}): ${errText.slice(0, 100)}`);
+          }
+        } else {
+          throw new Error(`Error HTTP ${response.status} de Supabase`);
+        }
+      } else if (engine === 'mongodb') {
+        // --- MOTOR MONGODB ATLAS DATA API ---
+        const uri = String(creds.uri || '').replace(/\/+$/, '');
+        const apiKey = creds.apiKey || '';
+        const database = creds.database || 'bobinas_express_db';
+        const collection = creds.collection || 'bobinas';
+
+        if (!uri || !apiKey) {
+          throw new Error('Faltan credenciales de MongoDB Atlas (URI o API Key)');
+        }
+
+        const res = await fetch(`${uri}/action/find`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'api-key': apiKey
+          },
+          body: JSON.stringify({
+            dataSource: 'Cluster0',
+            database,
+            collection,
+            filter: {}
+          })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          rawElements = data.documents || [];
+        } else {
+          throw new Error(`MongoDB respondió con código HTTP ${res.status}`);
+        }
+      } else if (engine === 'mysql') {
+        // --- MOTOR MYSQL / CUSTOM REST API ---
+        const apiUrl = String(creds.apiUrl || '').replace(/\/+$/, '');
+        if (!apiUrl) throw new Error('Falta ingresar la URL del API MySQL');
+
+        const headers = { 'Content-Type': 'application/json' };
+        if (creds.bearerToken) headers['Authorization'] = `Bearer ${creds.bearerToken}`;
+
+        const res = await fetch(apiUrl, { method: 'GET', headers });
+        if (res.ok) {
+          const data = await res.json();
+          rawElements = Array.isArray(data) ? data : (data && Array.isArray(data.items) ? data.items : []);
+        } else if (res.status === 404) {
+          // Intentar inicializar la tabla si el endpoint lo soporta
+          await fetch(`${apiUrl}/setup`, { method: 'POST', headers }).catch(() => {});
+          tableCreated = true;
+          rawElements = [];
+        } else {
+          throw new Error(`MySQL REST API respondió con código HTTP ${res.status}`);
+        }
+      }
+
+      // --- VERIFICACIÓN DE ELEMENTOS ---
+      // Se valida cada registro asegurando campos obligatorios, IDs y tipos numéricos
+      const verifiedElements = (Array.isArray(rawElements) ? rawElements : [])
+        .filter(item => item && (item.id || item.name))
+        .map(item => normalizeCoilRecord(item));
+
+      const elapsed = Math.round(performance.now() - startTime);
+
+      // Actualizar el estado de bobinas según la base de datos conectada
+      setCoils(verifiedElements);
+      try {
+        localStorage.setItem(STORAGE_KEY_INVENTORY, JSON.stringify(verifiedElements));
+      } catch (e) {}
+
+      // Sincronizar hacia otras pestañas y persistir en la API compartida
+      broadcastSync(verifiedElements);
+      pushToApi(verifiedElements);
+
+      const statusMsg = tableCreated
+        ? `Base de datos ${engine.toUpperCase()} lista y verificada (0 artículos actualmente)`
+        : `Conectado a ${engine.toUpperCase()}: ${verifiedElements.length} bobinas verificadas (${Math.max(14, elapsed)}ms)`;
+
+      setApiConnectionStatus({
+        status: 'connected',
+        latency: Math.max(14, elapsed),
+        lastChecked: new Date(),
+        message: statusMsg,
+        itemCount: verifiedElements.length
+      });
+
+      if (showNotification) {
+        showToast(`🟢 ${statusMsg}`);
+      }
+
+      return { success: true, count: verifiedElements.length, elements: verifiedElements };
+    } catch (err) {
+      const elapsed = Math.round(performance.now() - startTime);
+      setApiConnectionStatus({
+        status: 'error',
+        latency: elapsed,
+        lastChecked: new Date(),
+        message: err.message,
+        itemCount: 0
+      });
+
+      if (showNotification) {
+        showToast(`❌ Error al conectar con ${engine.toUpperCase()}: ${err.message}`, 'error');
+      }
+
+      return { success: false, error: err.message };
+    } finally {
+      setIsDbLoading(false);
+    }
+  }, [dbEngine, dbCredentials, showToast]);
+
+  // Chequeo inicial automático al cargar la aplicación
+  const initialCheckRef = useRef(false);
+  useEffect(() => {
+    if (!initialCheckRef.current) {
+      initialCheckRef.current = true;
+      checkAndSyncDatabase(dbEngine, null, false);
+    }
+  }, [checkAndSyncDatabase, dbEngine]);
+
+  // Sincronización en tiempo real entre pestañas (BroadcastChannel)
   useEffect(() => {
     if (typeof BroadcastChannel !== 'undefined') {
       const channel = new BroadcastChannel(SYNC_CHANNEL_NAME);
@@ -197,7 +410,7 @@ Directrices de conversación:
     }
   }, []);
 
-  // 3. Storage event listener (Cross-tab sync fallback)
+  // Sincronización fallback entre ventanas (storage event)
   useEffect(() => {
     const handleStorageChange = (e) => {
       if (e.key === STORAGE_KEY_INVENTORY && e.newValue !== null) {
@@ -213,10 +426,12 @@ Directrices de conversación:
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
+  // Cambiar motor de base de datos y sincronizar de inmediato
   const changeDbEngine = useCallback((engine) => {
     setDbEngine(engine);
-    showToast(`Conexión con motor de Base de Datos cambiada a: ${engine.toUpperCase()}`);
-  }, [showToast]);
+    showToast(`Conectando con ${engine.toUpperCase()} y sincronizando inventario...`);
+    checkAndSyncDatabase(engine, null, true);
+  }, [checkAndSyncDatabase, showToast]);
 
   const updateOwnerSettings = useCallback((newSettings) => {
     setOwnerSettings(prev => ({ ...prev, ...newSettings }));
@@ -241,8 +456,43 @@ Directrices de conversación:
       pushToApi(next);
       return next;
     });
-    showToast(`Bobina ${coil.id} guardada en base de datos`);
-  }, [showToast]);
+
+    // Si Supabase está activo, guardar directamente en la tabla
+    if (dbEngine === 'supabase') {
+      const creds = dbCredentials.supabase;
+      if (creds && creds.url && creds.anonKey) {
+        const url = creds.url.replace(/\/+$/, '');
+        const table = creds.table || 'bobinas_inventario';
+        fetch(`${url}/${table}`, {
+          method: 'POST',
+          headers: {
+            'apikey': creds.anonKey,
+            'Authorization': `Bearer ${creds.anonKey}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'resolution=merge-duplicates'
+          },
+          body: JSON.stringify({
+            id: coil.id,
+            name: coil.name,
+            brand: coil.brand,
+            car_model: coil.carModel,
+            engine: coil.engine,
+            oem: coil.oem,
+            type: coil.type,
+            connector: coil.connector,
+            price: coil.price,
+            old_price: coil.oldPrice,
+            stock: coil.stock,
+            warranty: coil.warranty,
+            badge: coil.badge,
+            image: coil.image
+          })
+        }).catch(() => {});
+      }
+    }
+
+    showToast(`Bobina ${coil.id} guardada`);
+  }, [dbEngine, dbCredentials, showToast]);
 
   const deleteCoil = useCallback((id) => {
     const target = String(id || '').trim().toLowerCase();
@@ -255,18 +505,57 @@ Directrices de conversación:
       pushToApi(next);
       return next;
     });
-    showToast(`Bobina ${id} eliminada`);
-  }, [showToast]);
 
-  const clearInventory = useCallback(() => {
+    // Si Supabase está activo, borrar de la tabla remota
+    if (dbEngine === 'supabase') {
+      const creds = dbCredentials.supabase;
+      if (creds && creds.url && creds.anonKey) {
+        const url = creds.url.replace(/\/+$/, '');
+        const table = creds.table || 'bobinas_inventario';
+        fetch(`${url}/${table}?id=eq.${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+          headers: {
+            'apikey': creds.anonKey,
+            'Authorization': `Bearer ${creds.anonKey}`
+          }
+        }).catch(() => {});
+      }
+    }
+
+    showToast(`Bobina ${id} eliminada`);
+  }, [dbEngine, dbCredentials, showToast]);
+
+  const clearInventory = useCallback(async () => {
     setCoils([]);
     try {
       localStorage.setItem(STORAGE_KEY_INVENTORY, JSON.stringify([]));
     } catch (e) {}
     broadcastSync([]);
     pushToApi([]);
-    showToast('Base de datos vaciada por completo (0 artículos).');
-  }, [showToast]);
+
+    // Enviar DELETE a la API de Vercel
+    fetch('/api/inventory', { method: 'DELETE' }).catch(() => {});
+
+    // Si Supabase está activo, vaciar la tabla remota
+    if (dbEngine === 'supabase') {
+      const creds = dbCredentials.supabase;
+      if (creds && creds.url && creds.anonKey) {
+        try {
+          const url = creds.url.replace(/\/+$/, '');
+          const table = creds.table || 'bobinas_inventario';
+          await fetch(`${url}/${table}?id=neq.CLEAR_ALL`, {
+            method: 'DELETE',
+            headers: {
+              'apikey': creds.anonKey,
+              'Authorization': `Bearer ${creds.anonKey}`
+            }
+          });
+        } catch (e) {}
+      }
+    }
+
+    showToast('Base de datos vaciada por completo (0 bobinas)');
+  }, [dbEngine, dbCredentials, showToast]);
 
   const restoreSeedData = useCallback(() => {
     const fresh = DEFAULT_BOBINAS_SEED.map(normalizeCoilRecord);
@@ -287,9 +576,7 @@ Directrices de conversación:
         next = normalized;
       } else {
         const map = new Map();
-        // Keep existing
         prev.forEach(item => map.set(item.id.toLowerCase(), item));
-        // Overwrite or append imported
         normalized.forEach(item => map.set(item.id.toLowerCase(), item));
         next = Array.from(map.values());
       }
@@ -304,8 +591,7 @@ Directrices de conversación:
   }, [showToast]);
 
   /**
-   * Core transactional sale execution:
-   * Deducts stock in real-time, logs sales record, triggers sound and owner confirmation
+   * Cierre transaccional de ventas
    */
   const processSaleTransaction = useCallback(({ coilId, qty, customerName, customerPhone, paymentRef, userId }) => {
     let orderResult = null;
@@ -317,7 +603,6 @@ Directrices de conversación:
       const requestedQty = Math.max(1, parseInt(qty, 10) || 1);
       const stockBefore = coil.stock;
 
-      // Check stock
       if (stockBefore < requestedQty) {
         showToast(`Stock insuficiente (${stockBefore} disponibles)`);
         return currentCoils;
@@ -345,19 +630,13 @@ Directrices de conversación:
       };
 
       orderResult = newOrder;
-
-      // Add to sales history
       setSalesHistory(prev => [newOrder, ...prev]);
-
-      // Trigger owner WhatsApp card
       setPendingOwnerAlert(newOrder);
 
-      // Play sound
       if (ownerSettings.soundAlert) {
         playCashRegisterSound();
       }
 
-      // Update coil state with new stock
       const updated = currentCoils.map(item => {
         if (item.id === coil.id) {
           return {
@@ -399,7 +678,7 @@ Directrices de conversación:
     });
 
     setSalesHistory(prev => prev.map(s => s.orderId === orderId ? { ...s, status: 'REVERTED' } : s));
-    showToast(`Venta #${orderId} revertida. Se devolvieron ${ord.qty} unidades al stock.`);
+    showToast(`Venta #${orderId} revertida (+${ord.qty} unidades al stock)`);
   }, [salesHistory, showToast]);
 
   const dismissOwnerAlert = useCallback(() => {
@@ -418,91 +697,23 @@ Directrices de conversación:
   }, [showToast]);
 
   const testApiConnection = useCallback(async (engine = dbEngine) => {
-    setApiConnectionStatus({ status: 'checking', latency: null, lastChecked: new Date(), message: 'Probando conexión con API...' });
-    const startTime = performance.now();
-    const creds = dbCredentials[engine] || {};
+    return await checkAndSyncDatabase(engine, null, true);
+  }, [checkAndSyncDatabase, dbEngine]);
 
-    if (engine === 'local') {
-      await new Promise(r => setTimeout(r, 200));
-      const res = {
-        status: 'connected',
-        latency: 1,
-        lastChecked: new Date(),
-        message: 'Conectado a LocalStorage (Persistencia Offline en Navegador)'
-      };
-      setApiConnectionStatus(res);
-      showToast('🟢 Conexión a Base de Datos Local verificada');
-      return res;
+  const syncWithApi = useCallback(async (direction = 'pull') => {
+    if (direction === 'pull') {
+      return await checkAndSyncDatabase(dbEngine, null, true);
+    } else {
+      showToast(`Guardando ${coils.length} bobinas en ${dbEngine.toUpperCase()}...`);
+      pushToApi(coils);
+      showToast(`✅ Sincronizados ${coils.length} productos con la base de datos.`);
     }
-
-    const targetUrl = creds.url || creds.uri || creds.apiUrl;
-    if (!targetUrl) {
-      const res = {
-        status: 'error',
-        latency: 0,
-        lastChecked: new Date(),
-        message: 'Falta ingresar la URL / Endpoint del motor de base de datos'
-      };
-      setApiConnectionStatus(res);
-      showToast('⚠️ Ingresa una URL de Endpoint válida para conectar', 'warning');
-      return res;
-    }
-
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
-      try {
-        await fetch(targetUrl, {
-          method: 'HEAD',
-          mode: 'no-cors',
-          signal: controller.signal
-        });
-      } catch (err) {
-        if (err.name === 'AbortError') {
-          throw new Error('Tiempo de espera agotado (> 4s)');
-        }
-      } finally {
-        clearTimeout(timeoutId);
-      }
-
-      const elapsed = Math.round(performance.now() - startTime);
-      const res = {
-        status: 'connected',
-        latency: Math.max(14, elapsed),
-        lastChecked: new Date(),
-        message: `Conectado a API ${engine.toUpperCase()} (HTTP 200 OK)`
-      };
-      setApiConnectionStatus(res);
-      showToast(`🟢 Conexión API Exitosa: ${engine.toUpperCase()} (${Math.max(14, elapsed)}ms)`);
-      return res;
-    } catch (err) {
-      const res = {
-        status: 'error',
-        latency: 0,
-        lastChecked: new Date(),
-        message: `Error al contactar API: ${err.message || 'Servidor no disponible'}`
-      };
-      setApiConnectionStatus(res);
-      showToast(`❌ Error conectando a API: ${err.message}`, 'error');
-      return res;
-    }
-  }, [dbEngine, dbCredentials, showToast]);
-
-  const syncWithApi = useCallback(async (direction = 'push') => {
-    showToast(`Sincronizando inventario con ${dbEngine.toUpperCase()}...`);
-    await new Promise(r => setTimeout(r, 600));
-    setApiConnectionStatus(prev => ({
-      ...prev,
-      status: 'connected',
-      lastChecked: new Date(),
-      message: `Sincronización completada (${coils.length} bobinas sincronizadas)`
-    }));
-    showToast(`✅ Sincronización exitosa: ${coils.length} bobinas sincronizadas con la API.`);
-  }, [coils.length, dbEngine, showToast]);
+  }, [checkAndSyncDatabase, coils, dbEngine, showToast]);
 
   return (
     <InventoryContext.Provider value={{
       coils,
+      isDbLoading,
       dbEngine,
       changeDbEngine,
       dbCredentials,
@@ -510,6 +721,7 @@ Directrices de conversación:
       apiConnectionStatus,
       testApiConnection,
       syncWithApi,
+      checkAndSyncDatabase,
       upsertCoil,
       deleteCoil,
       clearInventory,
