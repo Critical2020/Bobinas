@@ -7,9 +7,9 @@ export function Footer() {
 
   return (
     <footer className="bg-slate-950 border-t border-slate-800 py-8 px-4 text-slate-400 text-xs mt-auto">
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+      <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-5 text-center md:text-left">
         <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg bg-brand-500/20 text-brand-400 flex items-center justify-center font-bold">
+          <div className="h-8 w-8 rounded-lg bg-brand-500/20 text-brand-400 flex items-center justify-center font-bold shrink-0">
             <i className="fa-solid fa-bolt"></i>
           </div>
           <div>
@@ -18,20 +18,20 @@ export function Footer() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-center gap-4 text-[11px]">
+        <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-2 sm:gap-4 text-[11px]">
           <span className="flex items-center gap-1.5 text-emerald-400">
             <i className="fa-brands fa-whatsapp text-sm"></i>
-            WhatsApp Ventas: <strong>0412-6497478</strong>
+            WhatsApp: <strong>0412-6497478</strong>
           </span>
-          <span className="text-slate-600">•</span>
+          <span className="hidden sm:inline text-slate-600">•</span>
           <span className="text-slate-400">
             <i className="fa-solid fa-database mr-1 text-sky-400"></i>
-            {getEngineLabel(dbEngine)} ({coils.length} bobinas activas)
+            {getEngineLabel(dbEngine)} ({coils.length} bobinas)
           </span>
-          <span className="text-slate-600">•</span>
+          <span className="hidden sm:inline text-slate-600">•</span>
           <span className="text-slate-400">
             <i className="fa-solid fa-clock mr-1 text-amber-400"></i>
-            Lunes a Sábado: 8:00 AM - 6:00 PM
+            Lun–Sáb: 8:00 AM – 6:00 PM
           </span>
         </div>
       </div>

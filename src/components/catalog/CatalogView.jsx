@@ -53,7 +53,7 @@ export function CatalogView({ onNavigateTab, onAskAIAboutCoil, onEditCoil }) {
   return (
     <div className="space-y-6">
       {/* Hero Banner */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-brand-950 border border-slate-700/80 p-6 md:p-8 shadow-xl">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-brand-950 border border-slate-700/80 p-5 sm:p-8 shadow-xl">
         <div className="relative z-10 max-w-2xl space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-500/20 border border-brand-500/40 text-brand-400 text-xs font-bold uppercase tracking-wider">
@@ -107,7 +107,7 @@ export function CatalogView({ onNavigateTab, onAskAIAboutCoil, onEditCoil }) {
         </div>
 
         <div className="absolute -right-8 -bottom-10 opacity-20 lg:opacity-30 pointer-events-none text-slate-100">
-          <i className="fa-solid fa-car-battery text-[240px]"></i>
+          <i className="fa-solid fa-car-battery text-[120px] sm:text-[240px]"></i>
         </div>
       </div>
 
@@ -124,7 +124,7 @@ export function CatalogView({ onNavigateTab, onAskAIAboutCoil, onEditCoil }) {
       />
 
       {/* Results Header Count */}
-      <div className="flex items-center justify-between px-1">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-1">
         <p className="text-xs text-slate-400">
           Mostrando <strong className="text-white">{filteredCoils.length}</strong> de {coils.length} bobinas registradas
         </p>
@@ -160,7 +160,7 @@ export function CatalogView({ onNavigateTab, onAskAIAboutCoil, onEditCoil }) {
           )}
         </div>
       ) : filteredCoils.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
           {filteredCoils.map(coil => (
             <CoilCard
               key={coil.id}

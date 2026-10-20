@@ -205,7 +205,7 @@ export function ProductModal({ isOpen, onClose, initialProduct }) {
           </div>
 
           {/* Auto ID & Brand */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-[11px] font-semibold text-slate-400">
@@ -270,7 +270,7 @@ export function ProductModal({ isOpen, onClose, initialProduct }) {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] font-semibold text-slate-400 mb-1">
                 Vehículos / Modelos Compatibles *
@@ -314,7 +314,7 @@ export function ProductModal({ isOpen, onClose, initialProduct }) {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] font-semibold text-slate-400 mb-1">
                 Tipo Físico de Bobina
@@ -342,7 +342,7 @@ export function ProductModal({ isOpen, onClose, initialProduct }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-[11px] font-semibold text-slate-400 mb-1">
                 Precio USD ($) *
@@ -384,7 +384,7 @@ export function ProductModal({ isOpen, onClose, initialProduct }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] font-semibold text-slate-400 mb-1">
                 Garantía

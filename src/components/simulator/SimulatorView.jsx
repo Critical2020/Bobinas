@@ -96,7 +96,7 @@ export function SimulatorView({ initialPrompt, onTriggerSaleModal }) {
   return (
     <div className={isAdmin && showAdminConsole ? "grid grid-cols-1 lg:grid-cols-3 gap-6" : "max-w-3xl mx-auto w-full"}>
       {/* WhatsApp Interface */}
-      <div className={`${isAdmin && showAdminConsole ? "lg:col-span-2" : "w-full"} bg-slate-900 border border-slate-700/80 rounded-2xl flex flex-col h-[580px] overflow-hidden shadow-2xl relative`}>
+      <div className={`${isAdmin && showAdminConsole ? "lg:col-span-2" : "w-full"} bg-slate-900 border border-slate-700/80 rounded-2xl flex flex-col h-[60vh] min-h-[420px] sm:h-[580px] overflow-hidden shadow-2xl relative`}>
         {/* WhatsApp Header */}
         <div className="bg-[#075e54] text-white p-3.5 flex items-center justify-between shadow-md z-10">
           <div className="flex items-center gap-3">

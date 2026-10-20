@@ -29,7 +29,7 @@ export function CartDrawer() {
         className="fixed inset-0 bg-black/70 backdrop-blur-xs transition-opacity"
       />
 
-      <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
+      <div className="fixed inset-y-0 right-0 max-w-full flex pl-0 sm:pl-10">
         <div className="w-screen max-w-md bg-slate-900 border-l border-slate-700/80 shadow-2xl flex flex-col justify-between">
           
           {/* Header */}
@@ -121,7 +121,7 @@ export function CartDrawer() {
                   Datos de Contacto y Despacho
                 </span>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-2">
                   <input 
                     type="text" 
                     value={buyerDraft.name}
@@ -138,7 +138,7 @@ export function CartDrawer() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-2">
                   <input 
                     type="text" 
                     value={buyerDraft.car}
