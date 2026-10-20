@@ -88,7 +88,7 @@
     ];
 
     const OFFICIAL_WA_RAW = '04126497478';
-    const SYNC_CHANNEL_NAME = 'bobinas_express_sync_v2';
+    const SYNC_CHANNEL_NAME = 'bobinas_express_sync_v4';
 
     const broadcastSync = (items) => {
       if (typeof BroadcastChannel !== 'undefined') {
@@ -100,12 +100,16 @@
       }
     };
 
-    const pushToApi = (items) => {
+    const pushToApi = (items, currentEngine = null, currentCreds = null) => {
       try {
+        const payload = { coils: Array.isArray(items) ? items : [] };
+        if (currentEngine) payload.dbEngine = currentEngine;
+        if (currentCreds) payload.dbCredentials = currentCreds;
+
         fetch('/api/inventory', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ coils: items })
+          body: JSON.stringify(payload)
         }).catch(() => {});
       } catch (e) {}
     };
@@ -331,19 +335,19 @@
       const { showToast } = useToast();
       const [coils, setCoils] = useState(() => {
         try {
-          const s = localStorage.getItem('AUTOIGNITION_DB_INVENTORY_V2');
+          const s = localStorage.getItem('BOBINAS_EXPRESS_STORE_V4');
           if (s !== null) { const p = JSON.parse(s); if (Array.isArray(p)) return p.map(normalizeCoilRecord); }
         } catch (e) {}
         return [];
       });
       const [isDbLoading, setIsDbLoading] = useState(true);
-      const [dbEngine, setDbEngine] = useState(() => localStorage.getItem('AUTOIGNITION_DB_ENGINE_V2') || 'local');
+      const [dbEngine, setDbEngine] = useState(() => localStorage.getItem('BOBINAS_EXPRESS_ENGINE_V4') || 'local');
       const [salesHistory, setSalesHistory] = useState(() => {
-        try { const s = localStorage.getItem('AUTOIGNITION_SALES_LOG_V1'); if (s) return JSON.parse(s); } catch (e) {}
+        try { const s = localStorage.getItem('BOBINAS_EXPRESS_SALES_V4'); if (s) return JSON.parse(s); } catch (e) {}
         return INITIAL_SALES_SEED;
       });
       const [ownerSettings, setOwnerSettings] = useState(() => {
-        try { const s = localStorage.getItem('AUTOIGNITION_OWNER_PREFS_V2'); if (s) return JSON.parse(s); } catch (e) {}
+        try { const s = localStorage.getItem('BOBINAS_EXPRESS_PREFS_V4'); if (s) return JSON.parse(s); } catch (e) {}
         return {
           ownerPhone: OFFICIAL_WA_RAW,
           ownerName: 'Administrador Principal',
@@ -357,14 +361,14 @@
 
       const [dbCredentials, setDbCredentials] = useState(() => {
         try {
-          const s = localStorage.getItem('AUTOIGNITION_DB_CREDENTIALS_V2');
+          const s = localStorage.getItem('BOBINAS_EXPRESS_CREDS_V4');
           if (s) return JSON.parse(s);
         } catch (e) {}
         return {
           supabase: { url: 'https://vznqrxvblgghjswdmsaa.supabase.co/rest/v1', anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...', table: 'bobinas_inventario' },
           mongodb: { uri: 'https://data.mongodb-api.com/app/data-express/endpoint/data/v1', apiKey: 'mongo_sec_token_88921...', database: 'bobinas_express_db', collection: 'bobinas' },
           mysql: { apiUrl: 'https://api.bobinasexpress.com/v1/inventory', bearerToken: 'bearer_token_sql_live_4492', table: 'bobinas' },
-          local: { storageKey: 'AUTOIGNITION_DB_INVENTORY_V2' }
+          local: { storageKey: 'BOBINAS_EXPRESS_STORE_V4' }
         };
       });
 
@@ -377,97 +381,106 @@
       });
 
       useEffect(() => {
-        try { localStorage.setItem('AUTOIGNITION_DB_CREDENTIALS_V2', JSON.stringify(dbCredentials)); } catch (e) {}
+        try { localStorage.setItem('BOBINAS_EXPRESS_CREDS_V4', JSON.stringify(dbCredentials)); } catch (e) {}
       }, [dbCredentials]);
 
       const updateDbCredentials = (engine, newFields) => {
-        setDbCredentials(prev => ({ ...prev, [engine]: { ...prev[engine], ...newFields } }));
+        const nextCreds = { ...dbCredentials, [engine]: { ...dbCredentials[engine], ...newFields } };
+        setDbCredentials(nextCreds);
+        pushToApi(coils, dbEngine, nextCreds);
         showToast(`Credenciales para ${engine.toUpperCase()} guardadas`);
       };
 
       const checkAndSyncDatabase = async (engine = dbEngine, customCreds = null, showNotification = false) => {
         setIsDbLoading(true);
-        setApiConnectionStatus({ status: 'checking', latency: null, lastChecked: new Date(), message: `Verificando ${engine.toUpperCase()}...`, itemCount: 0 });
+        setApiConnectionStatus({ status: 'checking', latency: null, lastChecked: new Date(), message: `Sincronizando inventario con la base de datos...`, itemCount: 0 });
         const start = performance.now();
-        const creds = customCreds || dbCredentials[engine] || {};
+        let targetEngine = engine;
+        let creds = customCreds || dbCredentials[engine] || {};
 
         try {
           let rawElements = [];
           let tableCreated = false;
 
-          if (engine === 'local') {
-            const res = await fetch('/api/inventory');
-            if (res.ok) {
-              const data = await res.json();
-              if (data && Array.isArray(data.coils)) {
-                rawElements = data.coils;
-              } else {
-                await fetch('/api/inventory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coils: [] }) });
-                tableCreated = true;
-                rawElements = [];
+          // 0. Sincronizar estado global desde el servidor
+          try {
+            const serverCheck = await fetch('/api/inventory', { cache: 'no-store' });
+            if (serverCheck.ok) {
+              const contentType = serverCheck.headers.get('content-type') || '';
+              if (contentType.includes('application/json')) {
+                const serverData = await serverCheck.json();
+                if (serverData) {
+                  if (serverData.dbEngine && !customCreds) {
+                    targetEngine = serverData.dbEngine;
+                    if (targetEngine !== dbEngine) setDbEngine(targetEngine);
+                  }
+                  if (serverData.dbCredentials && !customCreds) {
+                    creds = serverData.dbCredentials[targetEngine] || creds;
+                    setDbCredentials(prev => ({ ...prev, ...serverData.dbCredentials }));
+                  }
+                  if (targetEngine === 'local' && Array.isArray(serverData.coils)) {
+                    rawElements = serverData.coils;
+                  }
+                }
               }
-            } else {
-              const s = localStorage.getItem('AUTOIGNITION_DB_INVENTORY_V2');
-              rawElements = s ? JSON.parse(s) : [];
             }
-          } else if (engine === 'supabase') {
+          } catch (e) {}
+
+          if (targetEngine === 'supabase') {
             const url = String(creds.url || '').replace(/\/+$/, '');
             const anonKey = creds.anonKey || '';
             const table = creds.table || 'bobinas_inventario';
-            if (!url || !anonKey) throw new Error('Faltan credenciales de Supabase');
-
-            const res = await fetch(`${url}/${table}?select=*`, {
-              headers: { 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}`, 'Content-Type': 'application/json' }
-            });
-
-            if (res.ok) {
-              rawElements = await res.json();
-            } else if (res.status === 404 || res.status === 400) {
-              showToast(`Tabla '${table}' no encontrada en Supabase. Verificando...`, 'warning');
-              rawElements = [];
-              tableCreated = true;
-            } else {
-              throw new Error(`Error Supabase (${res.status})`);
+            if (url && anonKey) {
+              try {
+                const res = await fetch(`${url}/${table}?select=*`, {
+                  headers: { 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}`, 'Content-Type': 'application/json' }
+                });
+                if (res.ok) rawElements = await res.json();
+                else if (res.status === 404 || res.status === 400) { tableCreated = true; rawElements = []; }
+              } catch (e) { rawElements = []; }
             }
-          } else if (engine === 'mongodb') {
+          } else if (targetEngine === 'mongodb') {
             const uri = String(creds.uri || '').replace(/\/+$/, '');
-            if (!uri || !creds.apiKey) throw new Error('Faltan credenciales de MongoDB');
-            const res = await fetch(`${uri}/action/find`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'api-key': creds.apiKey },
-              body: JSON.stringify({ dataSource: 'Cluster0', database: creds.database || 'bobinas_express_db', collection: creds.collection || 'bobinas', filter: {} })
-            });
-            if (res.ok) { const d = await res.json(); rawElements = d.documents || []; }
-            else throw new Error(`MongoDB error (${res.status})`);
-          } else if (engine === 'mysql') {
+            if (uri && creds.apiKey) {
+              try {
+                const res = await fetch(`${uri}/action/find`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'api-key': creds.apiKey },
+                  body: JSON.stringify({ dataSource: 'Cluster0', database: creds.database || 'bobinas_express_db', collection: creds.collection || 'bobinas', filter: {} })
+                });
+                if (res.ok) { const d = await res.json(); rawElements = d.documents || []; }
+              } catch (e) { rawElements = []; }
+            }
+          } else if (targetEngine === 'mysql') {
             const apiUrl = String(creds.apiUrl || '').replace(/\/+$/, '');
-            if (!apiUrl) throw new Error('Falta endpoint de MySQL REST');
-            const headers = { 'Content-Type': 'application/json' };
-            if (creds.bearerToken) headers['Authorization'] = `Bearer ${creds.bearerToken}`;
-            const res = await fetch(apiUrl, { headers });
-            if (res.ok) { const d = await res.json(); rawElements = Array.isArray(d) ? d : (d.items || []); }
-            else { rawElements = []; tableCreated = true; }
+            if (apiUrl) {
+              try {
+                const headers = { 'Content-Type': 'application/json' };
+                if (creds.bearerToken) headers['Authorization'] = `Bearer ${creds.bearerToken}`;
+                const res = await fetch(apiUrl, { headers });
+                if (res.ok) { const d = await res.json(); rawElements = Array.isArray(d) ? d : (d.items || []); }
+              } catch (e) { rawElements = []; }
+            }
           }
 
           const verified = (Array.isArray(rawElements) ? rawElements : []).filter(i => i && (i.id || i.name)).map(normalizeCoilRecord);
           const elapsed = Math.round(performance.now() - start);
 
           setCoils(verified);
-          try { localStorage.setItem('AUTOIGNITION_DB_INVENTORY_V2', JSON.stringify(verified)); } catch (e) {}
+          try { localStorage.setItem('BOBINAS_EXPRESS_STORE_V4', JSON.stringify(verified)); } catch (e) {}
           broadcastSync(verified);
-          pushToApi(verified);
 
           const msg = tableCreated 
-            ? `Base de datos ${engine.toUpperCase()} lista (0 artículos)` 
-            : `Conectado a ${engine.toUpperCase()}: ${verified.length} bobinas verificadas (${Math.max(14, elapsed)}ms)`;
+            ? `Base de datos ${targetEngine.toUpperCase()} lista (0 artículos)` 
+            : `Conectado a ${targetEngine.toUpperCase()}: ${verified.length} bobinas verificadas (${Math.max(14, elapsed)}ms)`;
 
           setApiConnectionStatus({ status: 'connected', latency: Math.max(14, elapsed), lastChecked: new Date(), message: msg, itemCount: verified.length });
           if (showNotification) showToast(`🟢 ${msg}`);
           return { success: true, count: verified.length, elements: verified };
         } catch (err) {
-          const elapsed = Math.round(performance.now() - start);
-          setApiConnectionStatus({ status: 'error', latency: elapsed, lastChecked: new Date(), message: err.message, itemCount: 0 });
-          if (showNotification) showToast(`❌ Error: ${err.message}`, 'error');
+          setCoils([]);
+          try { localStorage.setItem('BOBINAS_EXPRESS_STORE_V4', JSON.stringify([])); } catch (e) {}
+          setApiConnectionStatus({ status: 'error', latency: 0, lastChecked: new Date(), message: err.message, itemCount: 0 });
           return { success: false, error: err.message };
         } finally {
           setIsDbLoading(false);
@@ -483,15 +496,15 @@
           return await checkAndSyncDatabase(dbEngine, null, true);
         } else {
           showToast(`Guardando ${coils.length} bobinas en ${dbEngine.toUpperCase()}...`);
-          pushToApi(coils);
+          pushToApi(coils, dbEngine, dbCredentials);
           showToast(`✅ Sincronizados ${coils.length} productos.`);
         }
       };
 
-      useEffect(() => { localStorage.setItem('AUTOIGNITION_DB_INVENTORY_V2', JSON.stringify(coils)); }, [coils]);
-      useEffect(() => { localStorage.setItem('AUTOIGNITION_SALES_LOG_V1', JSON.stringify(salesHistory)); }, [salesHistory]);
-      useEffect(() => { localStorage.setItem('AUTOIGNITION_DB_ENGINE_V2', dbEngine); }, [dbEngine]);
-      useEffect(() => { localStorage.setItem('AUTOIGNITION_OWNER_PREFS_V2', JSON.stringify(ownerSettings)); }, [ownerSettings]);
+      useEffect(() => { localStorage.setItem('BOBINAS_EXPRESS_STORE_V4', JSON.stringify(coils)); }, [coils]);
+      useEffect(() => { localStorage.setItem('BOBINAS_EXPRESS_SALES_V4', JSON.stringify(salesHistory)); }, [salesHistory]);
+      useEffect(() => { localStorage.setItem('BOBINAS_EXPRESS_ENGINE_V4', dbEngine); }, [dbEngine]);
+      useEffect(() => { localStorage.setItem('BOBINAS_EXPRESS_PREFS_V4', JSON.stringify(ownerSettings)); }, [ownerSettings]);
 
       // Chequeo inicial automático
       useEffect(() => {
@@ -514,7 +527,7 @@
       // Cross-tab storage fallback
       useEffect(() => {
         const handleStorage = (e) => {
-          if (e.key === 'AUTOIGNITION_DB_INVENTORY_V2' && e.newValue) {
+          if (e.key === 'BOBINAS_EXPRESS_STORE_V4' && e.newValue) {
             try {
               const parsed = JSON.parse(e.newValue);
               if (Array.isArray(parsed)) {
@@ -530,6 +543,7 @@
       const changeDbEngine = (eng) => {
         setDbEngine(eng);
         showToast(`Motor cambiado a: ${eng.toUpperCase()} y sincronizando catálogo...`);
+        pushToApi(coils, eng, dbCredentials);
         checkAndSyncDatabase(eng, null, true);
       };
 
@@ -543,7 +557,7 @@
           if (idx >= 0) { next = [...prev]; next[idx] = item; }
           else { next = [item, ...prev]; }
           broadcastSync(next);
-          pushToApi(next);
+          pushToApi(next, dbEngine, dbCredentials);
           return next;
         });
         showToast(`Bobina ${item.id} guardada`);
@@ -553,9 +567,9 @@
         const target = String(id || '').trim().toLowerCase();
         setCoils(prev => {
           const next = prev.filter(b => String(b.id || '').trim().toLowerCase() !== target);
-          try { localStorage.setItem('AUTOIGNITION_DB_INVENTORY_V2', JSON.stringify(next)); } catch(e) {}
+          try { localStorage.setItem('BOBINAS_EXPRESS_STORE_V4', JSON.stringify(next)); } catch(e) {}
           broadcastSync(next);
-          pushToApi(next);
+          pushToApi(next, dbEngine, dbCredentials);
           return next;
         });
         showToast(`Bobina ${id} eliminada`);
@@ -563,9 +577,9 @@
 
       const clearInventory = () => {
         setCoils([]);
-        try { localStorage.setItem('AUTOIGNITION_DB_INVENTORY_V2', JSON.stringify([])); } catch(e) {}
+        try { localStorage.setItem('BOBINAS_EXPRESS_STORE_V4', JSON.stringify([])); } catch(e) {}
         broadcastSync([]);
-        pushToApi([]);
+        pushToApi([], dbEngine, dbCredentials);
         fetch('/api/inventory', { method: 'DELETE' }).catch(() => {});
         showToast('Base de datos vaciada por completo (0 artículos)');
       };

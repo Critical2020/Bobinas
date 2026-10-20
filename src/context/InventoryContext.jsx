@@ -7,12 +7,12 @@ import { useToast } from './ToastContext';
 
 const InventoryContext = createContext(null);
 
-const STORAGE_KEY_INVENTORY = 'AUTOIGNITION_DB_INVENTORY_V2';
-const STORAGE_KEY_ENGINE = 'AUTOIGNITION_DB_ENGINE_V2';
-const STORAGE_KEY_SALES_LOG = 'AUTOIGNITION_SALES_LOG_V1';
-const STORAGE_KEY_OWNER_PREFS = 'AUTOIGNITION_OWNER_PREFS_V2';
-const STORAGE_KEY_CREDENTIALS = 'AUTOIGNITION_DB_CREDENTIALS_V2';
-const SYNC_CHANNEL_NAME = 'bobinas_express_sync_v2';
+const STORAGE_KEY_INVENTORY = 'BOBINAS_EXPRESS_STORE_V4';
+const STORAGE_KEY_ENGINE = 'BOBINAS_EXPRESS_ENGINE_V4';
+const STORAGE_KEY_SALES_LOG = 'BOBINAS_EXPRESS_SALES_V4';
+const STORAGE_KEY_OWNER_PREFS = 'BOBINAS_EXPRESS_PREFS_V4';
+const STORAGE_KEY_CREDENTIALS = 'BOBINAS_EXPRESS_CREDS_V4';
+const SYNC_CHANNEL_NAME = 'bobinas_express_sync_v4';
 
 const broadcastSync = (items) => {
   if (typeof BroadcastChannel !== 'undefined') {
@@ -24,12 +24,16 @@ const broadcastSync = (items) => {
   }
 };
 
-const pushToApi = (items) => {
+const pushToApi = (items, currentEngine = null, currentCreds = null) => {
   try {
+    const payload = { coils: Array.isArray(items) ? items : [] };
+    if (currentEngine) payload.dbEngine = currentEngine;
+    if (currentCreds) payload.dbCredentials = currentCreds;
+
     fetch('/api/inventory', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ coils: items })
+      body: JSON.stringify(payload)
     }).catch(() => {});
   } catch (e) {}
 };
@@ -172,7 +176,7 @@ Directrices de conversación:
 
   /**
    * Chequea la base de datos conectada, crea la tabla si no existe,
-   * y verifica los elementos para sincronizar el catálogo.
+   * y verifica los elementos para sincronizar el catálogo con todos los usuarios.
    */
   const checkAndSyncDatabase = useCallback(async (engine = dbEngine, customCreds = null, showNotification = false) => {
     setIsDbLoading(true);
@@ -180,180 +184,135 @@ Directrices de conversación:
       status: 'checking',
       latency: null,
       lastChecked: new Date(),
-      message: `Verificando conexión con ${engine.toUpperCase()}...`,
+      message: `Sincronizando inventario con la base de datos...`,
       itemCount: 0
     });
 
     const startTime = performance.now();
-    const creds = customCreds || dbCredentials[engine] || {};
+    let targetEngine = engine;
+    let creds = customCreds || dbCredentials[engine] || {};
 
     try {
       let rawElements = [];
       let tableCreated = false;
 
-      if (engine === 'local') {
-        // --- MOTOR LOCAL / SERVIDOR VERCEL (/api/inventory) ---
-        const res = await fetch('/api/inventory');
-        if (res.ok) {
-          const data = await res.json();
-          if (data && Array.isArray(data.coils)) {
-            rawElements = data.coils;
-          } else {
-            // Inicializar tabla/archivo vacío en el servidor
-            await fetch('/api/inventory', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ coils: [] })
-            });
-            tableCreated = true;
-            rawElements = [];
+      // 0. Sincronizar estado global y motor activo desde el servidor
+      try {
+        const serverCheck = await fetch('/api/inventory', { cache: 'no-store' });
+        if (serverCheck.ok) {
+          const contentType = serverCheck.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const serverData = await serverCheck.json();
+            if (serverData) {
+              if (serverData.dbEngine && !customCreds) {
+                targetEngine = serverData.dbEngine;
+                if (targetEngine !== dbEngine) setDbEngine(targetEngine);
+              }
+              if (serverData.dbCredentials && !customCreds) {
+                creds = serverData.dbCredentials[targetEngine] || creds;
+                setDbCredentials(prev => ({ ...prev, ...serverData.dbCredentials }));
+              }
+              if (targetEngine === 'local' && Array.isArray(serverData.coils)) {
+                rawElements = serverData.coils;
+              }
+            }
           }
-        } else {
-          // Fallback a localStorage
-          const saved = localStorage.getItem(STORAGE_KEY_INVENTORY);
-          rawElements = saved ? JSON.parse(saved) : [];
         }
-      } else if (engine === 'supabase') {
-        // --- MOTOR SUPABASE (PostgreSQL REST API) ---
+      } catch (e) {}
+
+      // 1. Si el motor activo es Supabase
+      if (targetEngine === 'supabase') {
         const url = String(creds.url || '').replace(/\/+$/, '');
         const anonKey = creds.anonKey || '';
         const table = creds.table || 'bobinas_inventario';
 
-        if (!url || !anonKey) {
-          throw new Error('Ingresa la URL y API Key de Supabase en la configuración');
-        }
-
-        const endpoint = `${url}/${table}?select=*`;
-        let response;
-        try {
-          response = await fetch(endpoint, {
-            method: 'GET',
-            headers: {
-              'apikey': anonKey,
-              'Authorization': `Bearer ${anonKey}`,
-              'Content-Type': 'application/json'
-            }
-          });
-        } catch (fetchErr) {
-          throw new Error(`No se pudo contactar a Supabase: ${fetchErr.message}`);
-        }
-
-        if (response.ok) {
-          rawElements = await response.json();
-        } else if (response.status === 404 || response.status === 400) {
-          const errText = await response.text();
-          const isMissingTable = errText.includes('relation') || 
-                                 errText.includes('does not exist') || 
-                                 errText.includes('PGRST204') || 
-                                 errText.includes('PGRST205') || 
-                                 response.status === 404;
-
-          if (isMissingTable) {
-            // Chequeo detectó que la tabla no existe -> Intentar crearla
-            showToast(`⚠️ Tabla '${table}' no encontrada en Supabase. Verificando creación...`, 'warning');
-            
-            const createRes = await fetch('/api/database', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                action: 'check-and-init',
-                engine: 'supabase',
-                credentials: creds
-              })
-            }).catch(() => null);
-
-            if (createRes && createRes.ok) {
-              const createData = await createRes.json();
-              if (createData.tableExists) {
-                rawElements = createData.elements || [];
-              } else {
-                tableCreated = true;
-                rawElements = [];
+        if (url && anonKey) {
+          const endpoint = `${url}/${table}?select=*`;
+          try {
+            const response = await fetch(endpoint, {
+              method: 'GET',
+              headers: {
+                'apikey': anonKey,
+                'Authorization': `Bearer ${anonKey}`,
+                'Content-Type': 'application/json'
               }
-            } else {
+            });
+
+            if (response.ok) {
+              rawElements = await response.json();
+            } else if (response.status === 404 || response.status === 400) {
               tableCreated = true;
               rawElements = [];
             }
-          } else {
-            throw new Error(`Error Supabase (${response.status}): ${errText.slice(0, 100)}`);
+          } catch (fetchErr) {
+            // Si falla la conexión a Supabase, mantener vacío
+            rawElements = [];
           }
-        } else {
-          throw new Error(`Error HTTP ${response.status} de Supabase`);
         }
-      } else if (engine === 'mongodb') {
-        // --- MOTOR MONGODB ATLAS DATA API ---
+      } else if (targetEngine === 'mongodb') {
         const uri = String(creds.uri || '').replace(/\/+$/, '');
         const apiKey = creds.apiKey || '';
         const database = creds.database || 'bobinas_express_db';
         const collection = creds.collection || 'bobinas';
 
-        if (!uri || !apiKey) {
-          throw new Error('Faltan credenciales de MongoDB Atlas (URI o API Key)');
+        if (uri && apiKey) {
+          try {
+            const res = await fetch(`${uri}/action/find`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'api-key': apiKey
+              },
+              body: JSON.stringify({
+                dataSource: 'Cluster0',
+                database,
+                collection,
+                filter: {}
+              })
+            });
+            if (res.ok) {
+              const data = await res.json();
+              rawElements = data.documents || [];
+            }
+          } catch (e) {
+            rawElements = [];
+          }
         }
-
-        const res = await fetch(`${uri}/action/find`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'api-key': apiKey
-          },
-          body: JSON.stringify({
-            dataSource: 'Cluster0',
-            database,
-            collection,
-            filter: {}
-          })
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          rawElements = data.documents || [];
-        } else {
-          throw new Error(`MongoDB respondió con código HTTP ${res.status}`);
-        }
-      } else if (engine === 'mysql') {
-        // --- MOTOR MYSQL / CUSTOM REST API ---
+      } else if (targetEngine === 'mysql') {
         const apiUrl = String(creds.apiUrl || '').replace(/\/+$/, '');
-        if (!apiUrl) throw new Error('Falta ingresar la URL del API MySQL');
-
-        const headers = { 'Content-Type': 'application/json' };
-        if (creds.bearerToken) headers['Authorization'] = `Bearer ${creds.bearerToken}`;
-
-        const res = await fetch(apiUrl, { method: 'GET', headers });
-        if (res.ok) {
-          const data = await res.json();
-          rawElements = Array.isArray(data) ? data : (data && Array.isArray(data.items) ? data.items : []);
-        } else if (res.status === 404) {
-          // Intentar inicializar la tabla si el endpoint lo soporta
-          await fetch(`${apiUrl}/setup`, { method: 'POST', headers }).catch(() => {});
-          tableCreated = true;
-          rawElements = [];
-        } else {
-          throw new Error(`MySQL REST API respondió con código HTTP ${res.status}`);
+        if (apiUrl) {
+          try {
+            const headers = { 'Content-Type': 'application/json' };
+            if (creds.bearerToken) headers['Authorization'] = `Bearer ${creds.bearerToken}`;
+            const res = await fetch(apiUrl, { method: 'GET', headers });
+            if (res.ok) {
+              const data = await res.json();
+              rawElements = Array.isArray(data) ? data : (data && Array.isArray(data.items) ? data.items : []);
+            }
+          } catch (e) {
+            rawElements = [];
+          }
         }
       }
 
       // --- VERIFICACIÓN DE ELEMENTOS ---
-      // Se valida cada registro asegurando campos obligatorios, IDs y tipos numéricos
       const verifiedElements = (Array.isArray(rawElements) ? rawElements : [])
         .filter(item => item && (item.id || item.name))
         .map(item => normalizeCoilRecord(item));
 
       const elapsed = Math.round(performance.now() - startTime);
 
-      // Actualizar el estado de bobinas según la base de datos conectada
+      // Actualizar el estado con los elementos verificados (si está vacía, queda vacía [])
       setCoils(verifiedElements);
       try {
         localStorage.setItem(STORAGE_KEY_INVENTORY, JSON.stringify(verifiedElements));
       } catch (e) {}
 
-      // Sincronizar hacia otras pestañas y persistir en la API compartida
       broadcastSync(verifiedElements);
-      pushToApi(verifiedElements);
 
       const statusMsg = tableCreated
-        ? `Base de datos ${engine.toUpperCase()} lista y verificada (0 artículos actualmente)`
-        : `Conectado a ${engine.toUpperCase()}: ${verifiedElements.length} bobinas verificadas (${Math.max(14, elapsed)}ms)`;
+        ? `Base de datos ${targetEngine.toUpperCase()} lista (0 artículos)`
+        : `Conectado a ${targetEngine.toUpperCase()}: ${verifiedElements.length} bobinas verificadas (${Math.max(14, elapsed)}ms)`;
 
       setApiConnectionStatus({
         status: 'connected',
@@ -369,18 +328,19 @@ Directrices de conversación:
 
       return { success: true, count: verifiedElements.length, elements: verifiedElements };
     } catch (err) {
-      const elapsed = Math.round(performance.now() - startTime);
+      // En caso de cualquier falla, NUNCA inyectar las 12 bobinas
+      setCoils([]);
+      try {
+        localStorage.setItem(STORAGE_KEY_INVENTORY, JSON.stringify([]));
+      } catch (e) {}
+
       setApiConnectionStatus({
         status: 'error',
-        latency: elapsed,
+        latency: 0,
         lastChecked: new Date(),
         message: err.message,
         itemCount: 0
       });
-
-      if (showNotification) {
-        showToast(`❌ Error al conectar con ${engine.toUpperCase()}: ${err.message}`, 'error');
-      }
 
       return { success: false, error: err.message };
     } finally {
@@ -430,8 +390,9 @@ Directrices de conversación:
   const changeDbEngine = useCallback((engine) => {
     setDbEngine(engine);
     showToast(`Conectando con ${engine.toUpperCase()} y sincronizando inventario...`);
+    pushToApi(coils, engine, dbCredentials);
     checkAndSyncDatabase(engine, null, true);
-  }, [checkAndSyncDatabase, showToast]);
+  }, [checkAndSyncDatabase, coils, dbCredentials, showToast]);
 
   const updateOwnerSettings = useCallback((newSettings) => {
     setOwnerSettings(prev => ({ ...prev, ...newSettings }));
@@ -531,7 +492,7 @@ Directrices de conversación:
       localStorage.setItem(STORAGE_KEY_INVENTORY, JSON.stringify([]));
     } catch (e) {}
     broadcastSync([]);
-    pushToApi([]);
+    pushToApi([], dbEngine, dbCredentials);
 
     // Enviar DELETE a la API de Vercel
     fetch('/api/inventory', { method: 'DELETE' }).catch(() => {});
@@ -686,15 +647,17 @@ Directrices de conversación:
   }, []);
 
   const updateDbCredentials = useCallback((engine, newFields) => {
-    setDbCredentials(prev => ({
-      ...prev,
+    const nextCreds = {
+      ...dbCredentials,
       [engine]: {
-        ...prev[engine],
+        ...dbCredentials[engine],
         ...newFields
       }
-    }));
+    };
+    setDbCredentials(nextCreds);
+    pushToApi(coils, dbEngine, nextCreds);
     showToast(`Credenciales para ${engine.toUpperCase()} guardadas`);
-  }, [showToast]);
+  }, [coils, dbCredentials, dbEngine, showToast]);
 
   const testApiConnection = useCallback(async (engine = dbEngine) => {
     return await checkAndSyncDatabase(engine, null, true);
