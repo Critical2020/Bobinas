@@ -8,7 +8,7 @@ import { CatalogFilters } from './CatalogFilters';
 export function CatalogView({ onNavigateTab, onAskAIAboutCoil, onEditCoil }) {
   const { coils, isDbLoading, dbEngine } = useInventory();
   const { toggleCart } = useCart();
-  const { isAdmin, openAuthModal } = useAuth();
+  const { isAdmin } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBrand, setSelectedBrand] = useState('ALL');
@@ -82,17 +82,16 @@ export function CatalogView({ onNavigateTab, onAskAIAboutCoil, onEditCoil }) {
 
           <div className="pt-2 flex flex-wrap gap-3">
             <button 
-              onClick={() => onNavigateTab('simulator')} 
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-emerald-700/30 transition cursor-pointer"
-            >
-              <i className="fa-brands fa-whatsapp text-base"></i> Consultar disponibilidad con IA
-            </button>
-            <button 
               onClick={toggleCart} 
               className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-brand-500/20 transition cursor-pointer"
             >
               <i className="fa-solid fa-cart-shopping"></i> Ver Mi Carrito y Comprar
             </button>
+
+            <div className="px-4 py-2 bg-emerald-600/15 border border-emerald-500/30 text-emerald-300 font-semibold rounded-xl text-xs sm:text-sm flex items-center gap-2">
+              <i className="fa-brands fa-whatsapp text-base"></i>
+              <span>¿Dudas? El asesor IA está en la esquina inferior derecha →</span>
+            </div>
 
             {/* Admin Panel button - ONLY VISIBLE IF IS ADMIN */}
             {isAdmin && (

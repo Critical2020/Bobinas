@@ -10,10 +10,11 @@ import { Footer } from './components/layout/Footer';
 import { OwnerNotificationBanner } from './components/common/OwnerNotificationBanner';
 
 import { CatalogView } from './components/catalog/CatalogView';
-import { SimulatorView } from './components/simulator/SimulatorView';
 import { SalesView } from './components/sales/SalesView';
 import { DatabaseView } from './components/database/DatabaseView';
 import { AdminConfigView } from './components/admin/AdminConfigView';
+
+import { FloatingAIChat } from './components/simulator/FloatingAIChat';
 
 import { CartDrawer } from './components/modals/CartDrawer';
 import { AuthModal } from './components/modals/AuthModal';
@@ -24,7 +25,6 @@ import { ManualSaleModal } from './components/modals/ManualSaleModal';
 
 function MainApp() {
   const [activeTab, setActiveTab] = useState('catalog');
-  const [simulatorInitialPrompt, setSimulatorInitialPrompt] = useState('');
   
   // Modal states
   const [productModal, setProductModal] = useState({ open: false, product: null });
@@ -33,11 +33,6 @@ function MainApp() {
   const [manualSaleModalOpen, setManualSaleModalOpen] = useState(false);
 
   const { requireAdminAuth } = useAuth();
-
-  const handleAskAIAboutCoil = (coil) => {
-    setSimulatorInitialPrompt(`¿Tienen disponible la ${coil.name} (OEM: ${coil.oem.split('/')[0].trim()})?`);
-    setActiveTab('simulator');
-  };
 
   const handleOpenCreateProduct = () => {
     requireAdminAuth(
@@ -67,10 +62,6 @@ function MainApp() {
     );
   };
 
-  const handleTriggerSaleFromChat = (product) => {
-    setManualSaleModalOpen(true);
-  };
-
   return (
     <div className="flex flex-col min-h-screen bg-slate-900 text-slate-100 font-sans selection:bg-brand-500 selection:text-white">
       {/* Top Banner Ribbon */}
@@ -82,28 +73,21 @@ function MainApp() {
       {/* Main Body View */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
         {activeTab === 'catalog' && (
-          <CatalogView 
+          <CatalogView
             onNavigateTab={setActiveTab}
-            onAskAIAboutCoil={handleAskAIAboutCoil}
+            onAskAIAboutCoil={() => {}}
             onEditCoil={handleOpenEditProduct}
           />
         )}
 
-        {activeTab === 'simulator' && (
-          <SimulatorView 
-            initialPrompt={simulatorInitialPrompt}
-            onTriggerSaleModal={handleTriggerSaleFromChat}
-          />
-        )}
-
         {activeTab === 'sales' && (
-          <SalesView 
+          <SalesView
             onOpenManualSaleModal={handleOpenManualSale}
           />
         )}
 
         {activeTab === 'database' && (
-          <DatabaseView 
+          <DatabaseView
             onOpenCreateModal={handleOpenCreateProduct}
             onOpenEditModal={handleOpenEditProduct}
             onOpenBulkModal={handleOpenBulkModal}
@@ -122,26 +106,29 @@ function MainApp() {
       {/* Modals & Slide-overs */}
       <CartDrawer />
       <AuthModal />
-      <ProductModal 
+      <ProductModal
         isOpen={productModal.open}
         onClose={() => setProductModal({ open: false, product: null })}
         initialProduct={productModal.product}
       />
-      <BulkImportModal 
+      <BulkImportModal
         isOpen={bulkModalOpen}
         onClose={() => setBulkModalOpen(false)}
       />
-      <SchemaCodeModal 
+      <SchemaCodeModal
         isOpen={schemaModalOpen}
         onClose={() => setSchemaModalOpen(false)}
       />
-      <ManualSaleModal 
+      <ManualSaleModal
         isOpen={manualSaleModalOpen}
         onClose={() => setManualSaleModalOpen(false)}
       />
 
       {/* Floating Transaction Notification Alert */}
       <OwnerNotificationBanner />
+
+      {/* Floating AI Chat Bubble — bottom-right corner */}
+      <FloatingAIChat onTriggerSaleModal={() => setManualSaleModalOpen(true)} />
     </div>
   );
 }

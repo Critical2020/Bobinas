@@ -29,7 +29,6 @@ export function Header({ activeTab, setActiveTab }) {
 
   const navTabs = [
     { key: 'catalog', label: 'Catálogo', icon: 'fa-car-battery', adminOnly: false },
-    { key: 'simulator', label: 'Agente IA', icon: 'fa-brands fa-whatsapp', adminOnly: false, pulse: true, iconColor: 'text-emerald-400' },
     { key: 'sales', label: 'Ventas', icon: 'fa-cash-register', adminOnly: true, iconColor: 'text-rose-400', badge: salesHistory.length },
     { key: 'database', label: 'Base de Datos', icon: 'fa-database', adminOnly: true, iconColor: 'text-sky-400' },
     { key: 'admin', label: 'Config IA', icon: 'fa-sliders', adminOnly: true },
