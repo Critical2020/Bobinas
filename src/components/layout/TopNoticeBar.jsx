@@ -15,7 +15,7 @@ export function TopNoticeBar() {
   };
 
   return (
-    <aside aria-label="Estado del sistema" className="bg-gradient-to-r from-amber-600 via-brand-600 to-amber-700 text-xs py-1.5 px-4 text-center font-medium flex flex-wrap items-center justify-center gap-2 text-white shadow-sm">
+    <aside aria-label="Estado del sistema" className="bg-gradient-to-r from-red-700 via-brand-600 to-red-800 text-xs py-1.5 px-4 text-center font-medium flex flex-wrap items-center justify-center gap-2 text-white shadow-sm">
       <span className="flex h-2 w-2 relative">
         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
         <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
@@ -36,7 +36,7 @@ export function TopNoticeBar() {
       {/* Only show DB & Admin Status when user is logged in as Admin */}
       {isAdmin && (
         <>
-          <span className="hidden md:inline-flex items-center gap-1.5 bg-black/25 px-2.5 py-0.5 rounded-full text-[11px] text-amber-100 border border-white/15">
+          <span className="hidden md:inline-flex items-center gap-1.5 bg-black/25 px-2.5 py-0.5 rounded-full text-[11px] text-red-100 border border-white/15">
             <i className="fa-solid fa-database text-[10px] text-emerald-300"></i>
             <span>DB: {getEngineLabel(dbEngine)} ({coils.length} items)</span>
           </span>

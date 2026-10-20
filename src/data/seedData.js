@@ -13,7 +13,8 @@ export const DEFAULT_BOBINAS_SEED = [
     stock: 18,
     inStock: true,
     warranty: '12 meses',
-    badge: 'Más Vendida'
+    badge: 'Más Vendida',
+    image: 'https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=500&auto=format&fit=crop&q=80'
   },
   {
     id: 'BOB-CORSA1416',
@@ -29,7 +30,8 @@ export const DEFAULT_BOBINAS_SEED = [
     stock: 22,
     inStock: true,
     warranty: '12 meses',
-    badge: 'Original Delphi Spec'
+    badge: 'Original Delphi Spec',
+    image: 'https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?w=500&auto=format&fit=crop&q=80'
   },
   {
     id: 'BOB-AVEO16',
@@ -45,7 +47,8 @@ export const DEFAULT_BOBINAS_SEED = [
     stock: 25,
     inStock: true,
     warranty: '12 meses',
-    badge: 'Oferta'
+    badge: 'Oferta',
+    image: 'https://images.unsplash.com/photo-1517524008697-84bbe3c3fd98?w=500&auto=format&fit=crop&q=80'
   },
   {
     id: 'BOB-VITARA20',
@@ -61,7 +64,8 @@ export const DEFAULT_BOBINAS_SEED = [
     stock: 14,
     inStock: true,
     warranty: '12 meses',
-    badge: 'Japonesa OEM'
+    badge: 'Japonesa OEM',
+    image: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=500&auto=format&fit=crop&q=80'
   },
   {
     id: 'BOB-COROLLA18',
@@ -77,7 +81,8 @@ export const DEFAULT_BOBINAS_SEED = [
     stock: 30,
     inStock: true,
     warranty: '18 meses',
-    badge: 'Alta Durabilidad'
+    badge: 'Alta Durabilidad',
+    image: 'https://images.unsplash.com/photo-1542282088-72c9c27ed0cd?w=500&auto=format&fit=crop&q=80'
   },
   {
     id: 'BOB-FIESTA16',
@@ -93,7 +98,8 @@ export const DEFAULT_BOBINAS_SEED = [
     stock: 16,
     inStock: true,
     warranty: '12 meses',
-    badge: 'Heavy Duty'
+    badge: 'Heavy Duty',
+    image: 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=500&auto=format&fit=crop&q=80'
   },
   {
     id: 'BOB-CLIO16V',
@@ -109,7 +115,8 @@ export const DEFAULT_BOBINAS_SEED = [
     stock: 40,
     inStock: true,
     warranty: '12 meses',
-    badge: 'Oferta'
+    badge: 'Oferta',
+    image: 'https://images.unsplash.com/photo-1580273916550-e323be2ae537?w=500&auto=format&fit=crop&q=80'
   },
   {
     id: 'BOB-ELANTRA',
@@ -125,7 +132,8 @@ export const DEFAULT_BOBINAS_SEED = [
     stock: 8,
     inStock: true,
     warranty: '12 meses',
-    badge: 'Pocas Unidades'
+    badge: 'Pocas Unidades',
+    image: 'https://images.unsplash.com/photo-1563720223185-11003d516935?w=500&auto=format&fit=crop&q=80'
   },
   {
     id: 'BOB-CRUZE18',
@@ -141,7 +149,8 @@ export const DEFAULT_BOBINAS_SEED = [
     stock: 6,
     inStock: true,
     warranty: '12 meses',
-    badge: 'Premium'
+    badge: 'Premium',
+    image: 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=500&auto=format&fit=crop&q=80'
   },
   {
     id: 'BOB-SENTRA',
@@ -157,7 +166,8 @@ export const DEFAULT_BOBINAS_SEED = [
     stock: 15,
     inStock: true,
     warranty: '12 meses',
-    badge: 'Calidad OEM'
+    badge: 'Calidad OEM',
+    image: 'https://images.unsplash.com/photo-1502877338535-766e1452684a?w=500&auto=format&fit=crop&q=80'
   },
   {
     id: 'BOB-DFSK16',
@@ -173,7 +183,8 @@ export const DEFAULT_BOBINAS_SEED = [
     stock: 2,
     inStock: true,
     warranty: '2 meses',
-    badge: 'OEM DFSK'
+    badge: 'OEM DFSK',
+    image: 'https://images.unsplash.com/photo-1525609004556-c46c7d6cf023?w=500&auto=format&fit=crop&q=80'
   }
 ];
 

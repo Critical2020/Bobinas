@@ -88,8 +88,25 @@ export function InventoryTable({ onEditCoil, onDeleteCoil }) {
                     {coil.id}
                   </td>
                   <td className="py-3 px-4">
-                    <span className="text-[10px] uppercase font-bold text-brand-400 block">{coil.brand}</span>
-                    <span className="font-semibold text-white">{coil.name}</span>
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                        {coil.image ? (
+                          <img 
+                            src={coil.image} 
+                            alt={coil.name} 
+                            className="w-full h-full object-cover" 
+                            onError={(e) => { e.currentTarget.style.display = 'none'; if (e.currentTarget.nextElementSibling) e.currentTarget.nextElementSibling.style.display = 'flex'; }}
+                          />
+                        ) : null}
+                        <div className={`w-full h-full flex items-center justify-center text-slate-500 text-xs ${coil.image ? 'hidden' : 'flex'}`}>
+                          <i className="fa-solid fa-car-battery text-brand-400"></i>
+                        </div>
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-[10px] uppercase font-bold text-brand-400 block">{coil.brand}</span>
+                        <span className="font-semibold text-white truncate block max-w-xs">{coil.name}</span>
+                      </div>
+                    </div>
                   </td>
                   <td className="py-3 px-4 text-slate-300 max-w-xs truncate">
                     {coil.carModel}

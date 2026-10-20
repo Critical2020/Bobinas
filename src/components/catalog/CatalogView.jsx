@@ -98,7 +98,7 @@ export function CatalogView({ onNavigateTab, onAskAIAboutCoil, onEditCoil }) {
             {isAdmin && (
               <button 
                 onClick={() => onNavigateTab('database')} 
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 font-semibold rounded-xl text-xs sm:text-sm border border-amber-500/40 flex items-center gap-2 transition cursor-pointer"
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-red-300 font-semibold rounded-xl text-xs sm:text-sm border border-red-500/40 flex items-center gap-2 transition cursor-pointer"
               >
                 <i className="fa-solid fa-sliders"></i> Panel Administrador (Stock / DB)
               </button>

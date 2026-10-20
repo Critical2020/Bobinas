@@ -32,7 +32,7 @@ export function AuthProvider({ children }) {
     const cleanUser = String(user || '').trim().toLowerCase();
     const cleanPass = String(pass || '').trim();
 
-    if ((cleanUser === 'admin' || cleanUser === 'dueno') && (cleanPass === 'admin123' || cleanPass === '4747')) {
+    if ((cleanUser === 'admin' || cleanUser === 'dueno') && (cleanPass === '123456' || cleanPass === 'admin123')) {
       setIsAdmin(true);
       try {
         localStorage.setItem(STORAGE_KEY_ADMIN_AUTH, 'true');
@@ -48,7 +48,7 @@ export function AuthProvider({ children }) {
       }
       return true;
     } else {
-      showToast('❌ Credenciales incorrectas (Usa admin / admin123 o PIN 4747)');
+      showToast('❌ Contraseña incorrecta');
       return false;
     }
   };

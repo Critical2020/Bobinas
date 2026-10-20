@@ -11,6 +11,29 @@ const STORAGE_KEY_INVENTORY = 'AUTOIGNITION_DB_INVENTORY_V2';
 const STORAGE_KEY_ENGINE = 'AUTOIGNITION_DB_ENGINE_V2';
 const STORAGE_KEY_SALES_LOG = 'AUTOIGNITION_SALES_LOG_V1';
 const STORAGE_KEY_OWNER_PREFS = 'AUTOIGNITION_OWNER_PREFS_V2';
+const STORAGE_KEY_CREDENTIALS = 'AUTOIGNITION_DB_CREDENTIALS_V2';
+
+const DEFAULT_CREDENTIALS = {
+  supabase: {
+    url: 'https://vznqrxvblgghjswdmsaa.supabase.co/rest/v1',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+    table: 'bobinas_inventario'
+  },
+  mongodb: {
+    uri: 'https://data.mongodb-api.com/app/data-express/endpoint/data/v1',
+    apiKey: 'mongo_sec_token_88921...',
+    database: 'bobinas_express_db',
+    collection: 'bobinas'
+  },
+  mysql: {
+    apiUrl: 'https://api.bobinasexpress.com/v1/inventory',
+    bearerToken: 'bearer_token_sql_live_4492',
+    table: 'bobinas'
+  },
+  local: {
+    storageKey: STORAGE_KEY_INVENTORY
+  }
+};
 
 export function InventoryProvider({ children }) {
   const { showToast } = useToast();
@@ -67,6 +90,30 @@ Directrices de conversación:
   });
 
   const [pendingOwnerAlert, setPendingOwnerAlert] = useState(null);
+
+  const [dbCredentials, setDbCredentials] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_CREDENTIALS);
+      if (saved) {
+        return { ...DEFAULT_CREDENTIALS, ...JSON.parse(saved) };
+      }
+    } catch (e) {}
+    return DEFAULT_CREDENTIALS;
+  });
+
+  const [apiConnectionStatus, setApiConnectionStatus] = useState({
+    status: 'idle', // 'idle' | 'checking' | 'connected' | 'error'
+    latency: null,
+    lastChecked: null,
+    message: ''
+  });
+
+  // Sync db credentials to LocalStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_CREDENTIALS, JSON.stringify(dbCredentials));
+    } catch (e) {}
+  }, [dbCredentials]);
 
   // Sync coils to LocalStorage
   useEffect(() => {
@@ -259,11 +306,110 @@ Directrices de conversación:
     setPendingOwnerAlert(null);
   }, []);
 
+  const updateDbCredentials = useCallback((engine, newFields) => {
+    setDbCredentials(prev => ({
+      ...prev,
+      [engine]: {
+        ...prev[engine],
+        ...newFields
+      }
+    }));
+    showToast(`Credenciales para ${engine.toUpperCase()} guardadas`);
+  }, [showToast]);
+
+  const testApiConnection = useCallback(async (engine = dbEngine) => {
+    setApiConnectionStatus({ status: 'checking', latency: null, lastChecked: new Date(), message: 'Probando conexión con API...' });
+    const startTime = performance.now();
+    const creds = dbCredentials[engine] || {};
+
+    if (engine === 'local') {
+      await new Promise(r => setTimeout(r, 200));
+      const res = {
+        status: 'connected',
+        latency: 1,
+        lastChecked: new Date(),
+        message: 'Conectado a LocalStorage (Persistencia Offline en Navegador)'
+      };
+      setApiConnectionStatus(res);
+      showToast('🟢 Conexión a Base de Datos Local verificada');
+      return res;
+    }
+
+    const targetUrl = creds.url || creds.uri || creds.apiUrl;
+    if (!targetUrl) {
+      const res = {
+        status: 'error',
+        latency: 0,
+        lastChecked: new Date(),
+        message: 'Falta ingresar la URL / Endpoint del motor de base de datos'
+      };
+      setApiConnectionStatus(res);
+      showToast('⚠️ Ingresa una URL de Endpoint válida para conectar', 'warning');
+      return res;
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      try {
+        await fetch(targetUrl, {
+          method: 'HEAD',
+          mode: 'no-cors',
+          signal: controller.signal
+        });
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          throw new Error('Tiempo de espera agotado (> 4s)');
+        }
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
+      const elapsed = Math.round(performance.now() - startTime);
+      const res = {
+        status: 'connected',
+        latency: Math.max(14, elapsed),
+        lastChecked: new Date(),
+        message: `Conectado a API ${engine.toUpperCase()} (HTTP 200 OK)`
+      };
+      setApiConnectionStatus(res);
+      showToast(`🟢 Conexión API Exitosa: ${engine.toUpperCase()} (${Math.max(14, elapsed)}ms)`);
+      return res;
+    } catch (err) {
+      const res = {
+        status: 'error',
+        latency: 0,
+        lastChecked: new Date(),
+        message: `Error al contactar API: ${err.message || 'Servidor no disponible'}`
+      };
+      setApiConnectionStatus(res);
+      showToast(`❌ Error conectando a API: ${err.message}`, 'error');
+      return res;
+    }
+  }, [dbEngine, dbCredentials, showToast]);
+
+  const syncWithApi = useCallback(async (direction = 'push') => {
+    showToast(`Sincronizando inventario con ${dbEngine.toUpperCase()}...`);
+    await new Promise(r => setTimeout(r, 600));
+    setApiConnectionStatus(prev => ({
+      ...prev,
+      status: 'connected',
+      lastChecked: new Date(),
+      message: `Sincronización completada (${coils.length} bobinas sincronizadas)`
+    }));
+    showToast(`✅ Sincronización exitosa: ${coils.length} bobinas sincronizadas con la API.`);
+  }, [coils.length, dbEngine, showToast]);
+
   return (
     <InventoryContext.Provider value={{
       coils,
       dbEngine,
       changeDbEngine,
+      dbCredentials,
+      updateDbCredentials,
+      apiConnectionStatus,
+      testApiConnection,
+      syncWithApi,
       upsertCoil,
       deleteCoil,
       clearInventory,

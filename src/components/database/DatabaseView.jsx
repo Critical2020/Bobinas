@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { useAuth } from '../../context/AuthContext';
 import { InventoryTable } from './InventoryTable';
+import { ApiConnectionPanel } from './ApiConnectionPanel';
 import { exportToCSV, exportToSQL, downloadFile } from '../../utils/csvParser';
 
 export function DatabaseView({
@@ -176,6 +177,9 @@ export function DatabaseView({
           );
         })}
       </div>
+
+      {/* In-Page API & Database Connection Panel */}
+      <ApiConnectionPanel />
 
       {/* Main Inventory Table */}
       <InventoryTable 

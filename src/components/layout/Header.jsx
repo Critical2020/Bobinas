@@ -32,7 +32,7 @@ export function Header({ activeTab, setActiveTab }) {
           className="flex items-center gap-3 shrink-0 cursor-pointer" 
           onClick={() => setActiveTab('catalog')}
         >
-          <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-brand-600 to-amber-500 flex items-center justify-center shadow-lg shadow-brand-500/20 text-white">
+          <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-brand-600 to-rose-500 flex items-center justify-center shadow-lg shadow-brand-500/20 text-white">
             <i className="fa-solid fa-bolt text-lg"></i>
           </div>
           <div>
@@ -87,10 +87,10 @@ export function Header({ activeTab, setActiveTab }) {
                     : 'text-slate-300 hover:text-white hover:bg-slate-800'
                 }`}
               >
-                <i className="fa-solid fa-cash-register text-amber-400"></i>
+                <i className="fa-solid fa-cash-register text-rose-400"></i>
                 <span className="hidden sm:inline">Ventas & Auditoría</span>
                 <span className="sm:hidden">Ventas</span>
-                <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 py-0.2 rounded-full text-[10px] font-mono">
+                <span className="bg-rose-500/20 text-rose-300 border border-rose-500/40 px-1.5 py-0.2 rounded-full text-[10px] font-mono">
                   {salesHistory.length}
                 </span>
               </button>
@@ -141,7 +141,7 @@ export function Header({ activeTab, setActiveTab }) {
               className="px-3 py-1.5 bg-slate-900 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
               title="Acceso exclusivo para el Administrador"
             >
-              <i className="fa-solid fa-user-shield text-amber-400"></i>
+              <i className="fa-solid fa-user-shield text-rose-400"></i>
               <span className="hidden sm:inline">Acceso Admin</span>
             </button>
           )}

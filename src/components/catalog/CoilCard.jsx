@@ -23,16 +23,26 @@ export function CoilCard({ coil, onAskAI, onEditProduct }) {
           </div>
         </div>
 
-        {/* Product Visual Header / Icon */}
-        <div className="h-32 rounded-xl bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 border border-slate-700/60 flex flex-col items-center justify-center p-3 text-center mb-4 relative overflow-hidden group-hover:border-slate-600 transition">
-          <i className={`fa-solid fa-car-battery text-4xl ${coil.stock > 0 ? 'text-brand-500/80' : 'text-slate-600'} mb-2 group-hover:scale-110 transition duration-300`}></i>
-          <span className="text-[10px] font-mono text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">
+        {/* Product Visual Header / Image or Icon */}
+        <div className="h-40 rounded-xl bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 border border-slate-700/60 flex flex-col items-center justify-center p-2 text-center mb-4 relative overflow-hidden group-hover:border-slate-600 transition">
+          {coil.image ? (
+            <img 
+              src={coil.image} 
+              alt={coil.name} 
+              className="h-full w-full object-contain drop-shadow group-hover:scale-105 transition duration-300"
+              onError={(e) => { e.currentTarget.style.display = 'none'; if (e.currentTarget.nextElementSibling) e.currentTarget.nextElementSibling.style.display = 'flex'; }}
+            />
+          ) : null}
+          <div className={`h-full w-full flex-col items-center justify-center ${coil.image ? 'hidden' : 'flex'}`}>
+            <i className={`fa-solid fa-car-battery text-4xl ${coil.stock > 0 ? 'text-brand-500/80' : 'text-slate-600'} mb-2 group-hover:scale-110 transition duration-300`}></i>
+          </div>
+          <span className="absolute bottom-1.5 right-2 text-[10px] font-mono text-slate-400 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-700 shadow">
             OEM: {primaryOem}
           </span>
-          <span className="absolute top-2 right-2 text-[10px] font-semibold text-slate-400 bg-slate-900/90 px-2 py-0.5 rounded">
-            <i className="fa-solid fa-shield text-amber-400 mr-1"></i>{coil.warranty || '12 meses'}
+          <span className="absolute top-2 right-2 text-[10px] font-semibold text-slate-300 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-700/80 shadow">
+            <i className="fa-solid fa-shield text-rose-400 mr-1"></i>{coil.warranty || '12 meses'}
           </span>
-          <span className="absolute bottom-1.5 left-2 text-[9px] font-mono text-slate-500">
+          <span className="absolute top-2 left-2 text-[9px] font-mono text-slate-400 bg-slate-900/80 px-1.5 py-0.5 rounded border border-slate-700/60">
             {coil.id}
           </span>
         </div>

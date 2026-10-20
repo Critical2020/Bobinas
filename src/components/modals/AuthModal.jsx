@@ -25,7 +25,7 @@ export function AuthModal() {
 
         {/* Lock Icon & Title */}
         <div className="text-center mb-5">
-          <div className="h-12 w-12 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center mx-auto mb-3 text-xl shadow">
+          <div className="h-12 w-12 rounded-2xl bg-brand-500/20 text-brand-400 border border-brand-500/30 flex items-center justify-center mx-auto mb-3 text-xl shadow">
             <i className={`fa-solid ${isAdmin ? 'fa-unlock-keyhole text-emerald-400' : 'fa-lock'}`}></i>
           </div>
           <h3 className="text-base font-bold text-white">
@@ -38,7 +38,7 @@ export function AuthModal() {
 
         {/* Lock reason banner */}
         {authLockReason && (
-          <div className="mb-4 p-3 bg-amber-500/15 border border-amber-500/30 rounded-xl text-amber-300 text-xs flex items-start gap-2">
+          <div className="mb-4 p-3 bg-brand-500/15 border border-brand-500/30 rounded-xl text-brand-300 text-xs flex items-start gap-2">
             <i className="fa-solid fa-shield-halved text-sm shrink-0 mt-0.5"></i>
             <span>{authLockReason}</span>
           </div>
@@ -67,7 +67,7 @@ export function AuthModal() {
                 type="text" 
                 value={user}
                 onChange={(e) => setUser(e.target.value)}
-                placeholder="admin o dueno" 
+                placeholder="admin" 
                 className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-500"
                 required
               />
@@ -75,13 +75,13 @@ export function AuthModal() {
 
             <div>
               <label className="block text-[11px] font-semibold text-slate-400 mb-1">
-                Contraseña o PIN (admin123 o 4747)
+                Contraseña
               </label>
               <input 
                 type="password" 
                 value={pass}
                 onChange={(e) => setPass(e.target.value)}
-                placeholder="admin123 o 4747" 
+                placeholder="Ingresa tu contraseña" 
                 className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 font-mono"
                 required
                 autoFocus
@@ -96,10 +96,6 @@ export function AuthModal() {
                 Desbloquear Módulos
               </button>
             </div>
-
-            <p className="text-[10px] text-center text-slate-500 pt-1">
-              Credenciales por defecto: <code className="text-amber-400">admin / admin123</code> (o PIN <code className="text-amber-400">4747</code>)
-            </p>
           </form>
         )}
       </div>
